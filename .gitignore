@@ -1,0 +1,22 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+## Node / UI
+node_modules/
+src/Fitzobit.UI/dist/
+
+## UI build output served by the API host (rebuilt by start.ps1 / npm run build)
+src/Fitzobit.Web/wwwroot/
+
+## Local SQLite database (created automatically on startup)
+data/
+
+## Local test credentials for end-to-end verification (never commit)
+samples/*.local.json
+
+## TypeScript incremental build info
+*.tsbuildinfo
