@@ -4,6 +4,7 @@ services:
     name: fitzobit
     runtime: docker
     plan: free
+    region: singapore                # same region as the Neon database (AWS ap-southeast-1)
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health     # does not touch the database, so Neon can sleep
     autoDeploy: true
