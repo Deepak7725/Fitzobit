@@ -137,6 +137,29 @@ Packages added: `Microsoft.Extensions.Identity.Core 8.0.11` + `Microsoft.Extensi
 - **Open question for the user:** the real DB still holds the Part 2 test data (16 TST customers, 3 groups, 4 batches) and has
   no users yet. Offer reset (stop app, delete `dataitzobit.db*`, restart → first-run admin setup).
 
+### After Part 3 (chat 2, continued)
+- Azure App Service F1 deployment prepared: `deploy/AZURE.md` (portal steps), `deploy/publish-azure.ps1` → `artifacts/fitzobit-azure.zip`
+  (git-ignored). New option `Database:SqliteJournalMode` (WAL default; DELETE on Azure's network storage). Catalogue workbook is
+  copied into the publish output. Package smoke-tested from a folder without the .sln (Production, DELETE mode). Tests: 136.
+- When Visual Studio/IIS Express is running the app, build/test with `--artifacts-path artifacts	estbuild` (inside the repo,
+  so tests can still find Fitzobit.sln).
+
+- **Hosting chosen: Tailscale Funnel from the user's PC** (needs free, no card). `deploy/TAILSCALE.md`, `deploy/local-server.ps1`
+  (publishes to `artifacts/local-server`, runs Production on http://localhost:5180, `Auth__RequireHttpsCookies=false` so cookies are
+  Secure on HTTPS requests only, working dir = app folder, logs `data/logs/server.log`), `deploy/install-autostart.ps1` (Task Scheduler
+  "Fitzobit Server" at logon). App changes: `UseForwardedHeaders` (XFF + proto, loopback proxies only); first-run setup refused when any
+  proxy header is present; antiforgery cookie SecurePolicy = SameAsRequest (Always made plain-HTTP requests 500 in Production). Tests: 141.
+  The real DB already has the user's admin account (created via Visual Studio/IIS Express).
+
+- **Final hosting choice: Render (free, Docker) + Neon (free PostgreSQL).** `Dockerfile`, `.dockerignore`, `render.yaml`,
+  `deploy/RENDER.md`. PostgreSQL support: Npgsql 8.0.11 in Infrastructure; migrations in new project
+  `src/Fitzobit.Infrastructure.PostgreSql` (`InitialPostgreSql`; add every future migration to BOTH sets); `postgresql://` URLs
+  accepted (`DatabaseProviderConfigurator.ToNpgsqlConnectionString`). Data-protection keys stored in DB (`DataProtectionKeys`
+  table, SQLite migration `DataProtectionKeys`). `ForwardedHeaders:TrustAllProxies`, `Auth:SetupCode` (remote first-run with a
+  code; Render generates it), `/api/health` (no DB). Empty values sort last on both providers. Tests: 145, all pass on SQLite and on
+  PostgreSQL (`FITZOBIT_TEST_PG`, local PG 18 on this PC). Docker build itself not tested locally (no Docker installed).
+  PostgreSQL import cost ~0.6 ms/row inside EF (10k rows ≈ 15 s locally; slower on Render's 0.1 CPU).
+
 ### Useful facts / gotchas
 - `curl` writes `/tmp/...` that Windows Python can't read — use the session scratchpad path for temp files.
 - EF + SQLite: avoid correlated `Any(...)` over large tables without a usable index; `EXPLAIN QUERY PLAN` via Python `sqlite3` helped. Nested collection projections with conditionals can need SQL APPLY (not supported by SQLite) — use joins.

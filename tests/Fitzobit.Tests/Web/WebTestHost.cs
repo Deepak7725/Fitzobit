@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -18,18 +19,36 @@ namespace Fitzobit.Tests.Web;
 public sealed class WebTestHost : WebApplicationFactory<Program>
 {
     private readonly string _databaseFile = Path.Combine(Path.GetTempPath(), $"fitzobit-web-test-{Guid.NewGuid():N}.db");
+    private readonly PostgresTestDatabase? _postgres = PostgresTestDatabase.IsEnabled ? new PostgresTestDatabase() : null;
     private readonly bool _allowRemoteSetup;
+    private readonly bool _loopbackClient;
+    private readonly string? _setupCode;
 
-    public WebTestHost(bool allowRemoteSetup = true) => _allowRemoteSetup = allowRemoteSetup;
+    /// <param name="loopbackClient">Requests arrive from 127.0.0.1, as from a browser or a tunnel on the same machine.</param>
+    public WebTestHost(bool allowRemoteSetup = true, bool loopbackClient = false, string? setupCode = null)
+    {
+        _allowRemoteSetup = allowRemoteSetup;
+        _loopbackClient = loopbackClient;
+        _setupCode = setupCode;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Production");
-        builder.UseSetting("Database:ConnectionString", $"Data Source={_databaseFile}");
+        if (_postgres is not null)
+        {
+            builder.UseSetting("Database:Provider", "PostgreSQL");
+            builder.UseSetting("Database:ConnectionString", _postgres.ConnectionString);
+        }
+        else builder.UseSetting("Database:ConnectionString", $"Data Source={_databaseFile}");
         builder.UseSetting("CatalogueSeed:FilePath", TestPaths.CatalogueWorkbook);
         builder.UseSetting("Auth:AllowRemoteSetup", _allowRemoteSetup ? "true" : "false");
+        if (_setupCode is not null) builder.UseSetting("Auth:SetupCode", _setupCode);
         builder.ConfigureTestServices(services =>
-            services.AddControllers().AddApplicationPart(typeof(ThrowingTestController).Assembly));
+        {
+            services.AddControllers().AddApplicationPart(typeof(ThrowingTestController).Assembly);
+            if (_loopbackClient) services.AddTransient<IStartupFilter, LoopbackClientStartupFilter>();
+        });
     }
 
     public ApiClient NewClient() =>
@@ -58,10 +77,25 @@ public sealed class WebTestHost : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
+        _postgres?.Dispose();
         SqliteConnection.ClearAllPools();
         foreach (var file in new[] { _databaseFile, _databaseFile + "-wal", _databaseFile + "-shm" })
             try { File.Delete(file); } catch (IOException) { }
     }
+}
+
+/// <summary>Gives every test request a loopback remote address (TestServer leaves it empty).</summary>
+internal sealed class LoopbackClientStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, nextMiddleware) =>
+        {
+            context.Connection.RemoteIpAddress = IPAddress.Loopback;
+            return nextMiddleware(context);
+        });
+        next(app);
+    };
 }
 
 /// <summary>HttpClient wrapper that behaves like the SPA: keeps the cookies and echoes the CSRF token header.</summary>

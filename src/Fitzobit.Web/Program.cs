@@ -10,6 +10,8 @@ using Fitzobit.Web.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -66,8 +68,26 @@ builder.Services.AddAntiforgery(o =>
     o.Cookie.Name = "fitzobit.af";
     o.Cookie.HttpOnly = true;
     o.Cookie.SameSite = SameSiteMode.Strict;
-    o.Cookie.SecurePolicy = requireHttpsCookies ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+    // "Always" would make every request that reaches the app as plain HTTP fail (behind a TLS-terminating proxy, or
+    // http://localhost). The token cookie is Secure whenever the request is HTTPS; the sign-in cookie stays strict.
+    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
+
+// Tunnels and reverse proxies on this machine (Tailscale Funnel, Cloudflare Tunnel, IIS) pass on the visitor's address and
+// scheme. Only proxies on this machine are trusted: the default known proxies/networks are loopback.
+// On a platform whose own proxy is the only way in (Render), set ForwardedHeaders:TrustAllProxies=true.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    if (builder.Configuration.GetValue("ForwardedHeaders:TrustAllProxies", false))
+    {
+        o.KnownNetworks.Clear();
+        o.KnownProxies.Clear();
+    }
+});
+
+// Cookie-protection keys live in the database, so sign-ins survive restarts and redeploys (hosts without a lasting disk).
+builder.Services.AddDataProtection().SetApplicationName("Fitzobit").PersistKeysToDbContext<FitzobitDbContext>();
 
 builder.Services.AddRateLimiter(o =>
 {
@@ -94,6 +114,7 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<DatabaseInitializer>().InitializeAsync();
 }
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
@@ -113,6 +134,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous().DisableRateLimiting();
 app.MapFallback("/api/{**path}", () => Results.NotFound()).AllowAnonymous();
 app.MapFallbackToFile("index.html").AllowAnonymous();
 

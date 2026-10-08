@@ -32,7 +32,7 @@ The plan catalogue comes from Fitzobit's WhatsApp Business catalogue export.
 17. [Configuration and environment variables](#configuration-and-environment-variables)
 18. [Testing](#testing)
 19. [Deployment](#deployment)
-20. [Future PostgreSQL migration](#future-postgresql-migration)
+20. [PostgreSQL](#postgresql)
 21. [Troubleshooting](#troubleshooting)
 
 ---
@@ -114,18 +114,22 @@ Rules enforced by the database as well as by the code:
 
 ## EF Core migrations
 
-Migrations live in `src/Fitzobit.Infrastructure/Persistence/Migrations` and are applied automatically at startup
-(`Database:MigrateOnStartup`). Current set: `InitialCreate`, `Part2CustomerImport`, `AssignmentLookupIndexes`,
-`Part3AuthAuditMessaging`.
+Migrations are applied automatically at startup (`Database:MigrateOnStartup`). They are provider-specific, so there are two sets
+built from the same model:
 
-After changing the model (the `dotnet-ef` tool is in the local tool manifest, `dotnet tool restore` installs it):
+| Provider | Folder | Migrations |
+|---|---|---|
+| SQLite | `src/Fitzobit.Infrastructure/Persistence/Migrations` | `InitialCreate`, `Part2CustomerImport`, `AssignmentLookupIndexes`, `Part3AuthAuditMessaging`, `DataProtectionKeys` |
+| PostgreSQL | `src/Fitzobit.Infrastructure.PostgreSql/Migrations` | `InitialPostgreSql` (the full schema) |
+
+After changing the model, add a migration to **both** sets (the `dotnet-ef` tool is in the local tool manifest; `dotnet tool restore` installs it):
 
 ```powershell
 dotnet ef migrations add <Name> -p src\Fitzobit.Infrastructure -s src\Fitzobit.Infrastructure -o Persistence\Migrations
-dotnet ef database update -p src\Fitzobit.Infrastructure -s src\Fitzobit.Infrastructure   # optional; startup does this too
+dotnet ef migrations add <Name> -p src\Fitzobit.Infrastructure.PostgreSql -s src\Fitzobit.Infrastructure.PostgreSql -o Migrations
 ```
 
-`dotnet ef` uses `data\fitzobit.db`, or the connection string in the `FITZOBIT_DB_CONNECTION` environment variable.
+`dotnet ef` uses `data\fitzobit.db` (or `FITZOBIT_DB_CONNECTION`) for SQLite, and `FITZOBIT_PG_CONNECTION` for PostgreSQL.
 
 ## Authentication and first-run setup
 
@@ -137,8 +141,11 @@ Everyone signs in. There are two roles; the **server enforces them on every API 
 | **Manager** | Upload and import customers, View Data, edit customers, delivery groups, export, dashboard, catalogue (view), settings (read) |
 
 **First-run setup.** While no user exists the app shows *Create the administrator*. For safety this works only from
-a browser on the server itself (`localhost`); set `Auth:AllowRemoteSetup=true` temporarily to allow it from another
-machine. Setup is refused once any user exists. The administrator then adds Managers under **Settings → Users**.
+a browser on the server itself (`localhost`, never through a tunnel or proxy), or from anywhere with the setup code
+configured on the server (`Auth:SetupCode`; Render generates one). `Auth:AllowRemoteSetup=true` opens it completely and
+should only be set briefly. Setup is refused once any user exists. The administrator then adds Managers under **Settings → Users**.
+
+Cookie-protection keys are stored in the database (`DataProtectionKeys`), so sign-ins survive restarts and redeploys.
 
 Passwords: at least 10 characters with letters and numbers, not containing the user name; stored as salted PBKDF2
 hashes (ASP.NET Core Identity hasher). Five failed sign-ins lock an account for 15 minutes; error messages never
@@ -282,6 +289,8 @@ $env:WhatsApp__AccessToken       = '<permanent access token>'   # never in appse
 - Headers: Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`,
   Permissions-Policy, `Cache-Control: no-store` for the API, HSTS outside Development; no `Server` header.
 - Rate limiting on sign-in and setup (10 per minute per address) plus account lockout.
+- Behind a tunnel or reverse proxy on the same machine, the visitor's address and scheme come from `X-Forwarded-*`
+  headers (trusted from loopback only), and first-run setup refuses any proxied request.
 - Uploads: `.xlsx` only, size and row limits, zip-bomb guard, macros rejected, formulas not evaluated.
 - Input validation on every write; EF Core parameterised queries (no SQL is built from user input).
 - Errors: users get a readable message; unexpected failures return a generic message with a reference id, and the
@@ -297,18 +306,22 @@ using `__` for nesting (e.g. `Database__ConnectionString`).
 |---|---|---|
 | `ASPNETCORE_URLS` | `http://localhost:5080` (launch profile) | Listening address |
 | `ASPNETCORE_ENVIRONMENT` | `Production` (`Development` via `start.ps1`) | Development enables Swagger and non-Secure cookies |
-| `Database__Provider` | `Sqlite` | `PostgreSQL` is reserved (not enabled) |
+| `Database__Provider` | `Sqlite` | `Sqlite` (local file) or `PostgreSQL` (hosted, e.g. Neon) |
 | `Database__ConnectionString` | `Data Source=data/fitzobit.db` | SQLite file |
 | `Database__MigrateOnStartup` | `true` | Apply migrations at startup |
+| `Database__SqliteJournalMode` | `WAL` | Use `DELETE` on network storage (Azure App Service) |
 | `Fitzobit__BasePath` | folder containing `Fitzobit.sln` | Base for relative paths (set it for published deployments) |
 | `CatalogueSeed__Enabled` / `CatalogueSeed__FilePath` | `true` / `Fitzobit_WhatsApp_Catalogue.xlsx` | Catalogue sync at startup |
 | `Import__MaxFileSizeBytes` / `Import__MaxRows` | 10 MB / 20,000 | Upload limits |
 | `Export__MaxRows` / `Export__TimeZone` | 100,000 / `Asia/Kolkata` | Export limit and date time zone |
 | `Auth__SessionHours` | `10` | Sliding session length |
-| `Auth__AllowRemoteSetup` | `false` | Allow first-run setup from another machine |
+| `Auth__SetupCode` | empty | Secret that allows first-run setup from another machine (Render generates it) |
+| `Auth__AllowRemoteSetup` | `false` | Allow first-run setup from anywhere without a code (use only briefly) |
+| `ForwardedHeaders__TrustAllProxies` | `false` | Trust `X-Forwarded-*` from any proxy; set on platforms reachable only through their proxy (Render) |
 | `Auth__RequireHttpsCookies` | `true` outside Development | Mark cookies `Secure` |
 | `WhatsApp__PhoneNumberId`, `WhatsApp__BusinessAccountId`, `WhatsApp__AccessToken` | empty | WhatsApp Cloud API (token: environment/user secrets only) |
-| `FITZOBIT_DB_CONNECTION` | | Connection string used by `dotnet ef` |
+| `FITZOBIT_DB_CONNECTION` / `FITZOBIT_PG_CONNECTION` | | Connection strings used by `dotnet ef` (SQLite / PostgreSQL) |
+| `FITZOBIT_TEST_PG` | | Run the test suite against PostgreSQL (a login allowed to create databases) |
 
 ## Testing
 
@@ -316,7 +329,7 @@ using `__` for nesting (e.g. `Database__ConnectionString`).
 dotnet test
 ```
 
-133 tests, all against real SQLite databases built from the real migrations and seeded from the real catalogue workbook:
+145 tests, all against real SQLite databases built from the real migrations and seeded from the real catalogue workbook:
 
 - **Unit:** phone, name and location validation, pincode extraction, location classification, plan matching,
   catalogue price warnings, password policy.
@@ -335,6 +348,14 @@ under 30 ms, filtered export about 0.1 s and a full export about 0.8 s.
 
 ## Deployment
 
+**Free cloud hosting, independent of your PC: Render + Neon.** See [deploy/RENDER.md](deploy/RENDER.md). Render runs the
+`Dockerfile` (free web service, `render.yaml`) and Neon provides free PostgreSQL. The app sleeps after 15 idle minutes.
+
+**Free hosting from this PC (no card):** see [deploy/TAILSCALE.md](deploy/TAILSCALE.md). `deploy\local-server.ps1` runs the
+production server on http://localhost:5180 and Tailscale Funnel publishes it at a permanent `https://….ts.net` address.
+
+**Azure App Service (Free F1, needs a card for sign-up):** see [deploy/AZURE.md](deploy/AZURE.md); `deploy\publish-azure.ps1` builds the upload package.
+
 For a single office machine or small server:
 
 ```powershell
@@ -349,24 +370,26 @@ and `ASPNETCORE_URLS`. Put it behind HTTPS (IIS, a reverse proxy, or Kestrel wit
 `data` folder regularly. Keep the ASP.NET Core data-protection keys (the default per-user key store) on the same
 machine so sign-in cookies stay valid across restarts.
 
-## Future PostgreSQL migration
+## PostgreSQL
 
-SQLite is the database today. The code is ready to switch without touching business logic:
+SQLite is the default for local use; PostgreSQL is used for hosting (Neon on Render). Switch with configuration only:
 
-- The provider is chosen in one place, `DatabaseProviderConfigurator` (Infrastructure), from `Database:Provider`.
-- The Domain and Application layers have no provider-specific code; the only provider-aware model line is the
-  filter of the active-assignment index (`"IsActive" = 1` for SQLite, `"IsActive" = TRUE` otherwise).
-- Text enums, `decimal(12,2)` money and UTC timestamps map directly to PostgreSQL types.
+```powershell
+$env:Database__Provider = 'PostgreSQL'
+$env:Database__ConnectionString = 'postgresql://user:password@host/dbname?sslmode=require'   # or Host=…;Username=…
+```
 
-Steps when the time comes (not done yet):
+- The provider is chosen in one place, `DatabaseProviderConfigurator` (Infrastructure). The Domain and Application
+  layers have no provider-specific code; the only provider-aware model line is the filter of the active-assignment
+  index (`"IsActive" = 1` for SQLite, `"IsActive" = TRUE` for PostgreSQL).
+- PostgreSQL migrations live in `Fitzobit.Infrastructure.PostgreSql` and are applied at startup like SQLite's.
+- Text enums, `numeric(12,2)` money and `timestamp with time zone` (UTC) are used on PostgreSQL.
+- Tests: set `FITZOBIT_TEST_PG` to a PostgreSQL connection string allowed to create databases, then run `dotnet test`.
+  Every test then runs against its own temporary PostgreSQL database.
 
-1. Add `Npgsql.EntityFrameworkCore.PostgreSQL` to Infrastructure and implement the `PostgreSQL` case in `DatabaseProviderConfigurator`.
-2. Create a separate PostgreSQL migration set (migrations are provider-specific; the model is not), e.g. a
-   `Fitzobit.Infrastructure.PostgreSql` migrations assembly.
-3. Create the PostgreSQL database, set `Database__Provider=PostgreSQL` and the connection string, start the app to apply migrations.
-4. Copy the data: stop the app, export each table from SQLite and import it in dependency order (users, catalogue,
-   plans, groups, customers, assignments, history, imports, audit), then reset each identity sequence to `MAX(Id)+1`.
-5. Run the test suite against PostgreSQL and verify counts per table before switching users over.
+Moving existing SQLite data to PostgreSQL: the simplest route is re-uploading the customer Excel files into the hosted
+app. A direct copy means exporting each table in dependency order (users, catalogue, plans, groups, customers,
+assignments, history, imports, audit) and resetting each identity sequence to `MAX(Id)+1`.
 
 ## Troubleshooting
 
@@ -375,7 +398,7 @@ Steps when the time comes (not done yet):
 | Build fails with “file is locked by Fitzobit.Web” | Stop the running app: `Get-Process Fitzobit.Web \| Stop-Process` |
 | UI changes don't show | `.\start.ps1 -RebuildUI` or `cd src\Fitzobit.UI; npm run build` |
 | “Setup must be completed on the server itself” | Open the app at `http://localhost:5080` on the server, or set `Auth__AllowRemoteSetup=true` temporarily |
-| Signed out right after signing in (Production over plain HTTP) | Use HTTPS, or for a trusted local network set `Auth__RequireHttpsCookies=false` |
+| Signed out right after signing in (Production over plain HTTP) | Use HTTPS, or set `Auth__RequireHttpsCookies=false` (cookies are then Secure only on HTTPS requests) |
 | “Too many failed attempts” | Wait 15 minutes, or an Admin resets the password (which also unlocks) |
 | “Your session token is missing or has expired” | Reload the page; the app fetches a fresh CSRF token |
 | Catalogue is empty | Check `CatalogueSeed:FilePath`, then **Settings → Catalogue → Re-sync now** (Admin) |

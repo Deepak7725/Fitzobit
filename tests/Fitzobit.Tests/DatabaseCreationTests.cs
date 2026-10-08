@@ -57,11 +57,32 @@ public class DatabaseCreationTests
     }
 
     [Fact]
-    public void PostgreSql_is_reserved_but_not_enabled_in_version_1()
+    public void PostgreSql_uses_its_own_migrations_and_the_same_model()
     {
         var builder = new DbContextOptionsBuilder<FitzobitDbContext>();
-        var options = new DatabaseOptions { Provider = DatabaseProviders.PostgreSql, ConnectionString = "Host=localhost" };
-        Assert.Throws<NotSupportedException>(() => DatabaseProviderConfigurator.Configure(builder, options, Path.GetTempPath()));
+        DatabaseProviderConfigurator.Configure(builder,
+            new DatabaseOptions { Provider = DatabaseProviders.PostgreSql, ConnectionString = "Host=localhost;Database=x;Username=u" }, Path.GetTempPath());
+        using var db = new FitzobitDbContext(builder.Options, new TestUser(), new FixedClock(DateTime.UtcNow));
+
+        Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", db.Database.ProviderName);
+        var migrations = db.Database.GetMigrations().ToList();
+        Assert.Contains(migrations, m => m.EndsWith("_InitialPostgreSql"));
+        Assert.DoesNotContain(migrations, m => m.EndsWith("_InitialCreate"));
+        var activeIndex = db.Model.FindEntityType(typeof(Domain.DeliveryGroups.CustomerDeliveryGroupAssignment))!
+            .GetIndexes().Single(i => i.GetDatabaseName() == "UX_CustomerDeliveryGroupAssignments_ActiveCustomer");
+        Assert.Equal("\"IsActive\" = TRUE", activeIndex.GetFilter());
+    }
+
+    [Theory]
+    [InlineData("postgresql://alex:p%40ss%3Aword@ep-cool-1.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
+        "ep-cool-1.ap-southeast-1.aws.neon.tech", 5432, "neondb", "alex", "p@ss:word", Npgsql.SslMode.Require)]
+    [InlineData("postgres://u:pw@db.example.com:6543/app", "db.example.com", 6543, "app", "u", "pw", Npgsql.SslMode.Prefer)]
+    public void Hosted_postgresql_urls_become_npgsql_connection_strings(string url, string host, int port, string database, string user,
+        string password, Npgsql.SslMode ssl)
+    {
+        var csb = new Npgsql.NpgsqlConnectionStringBuilder(DatabaseProviderConfigurator.ToNpgsqlConnectionString(url));
+        Assert.Equal((host, port, database, user, password, ssl), (csb.Host, csb.Port, csb.Database, csb.Username, csb.Password, csb.SslMode));
+        Assert.Equal("Host=h;Database=d", DatabaseProviderConfigurator.ToNpgsqlConnectionString("Host=h;Database=d"));
     }
 
     private static async Task<List<string>> QueryStrings(SqliteConnection connection, string sql)

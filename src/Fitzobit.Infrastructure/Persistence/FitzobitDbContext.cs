@@ -6,13 +6,14 @@ using Fitzobit.Domain.Customers;
 using Fitzobit.Domain.DeliveryGroups;
 using Fitzobit.Domain.Imports;
 using Fitzobit.Domain.Plans;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Fitzobit.Infrastructure.Persistence;
 
 public class FitzobitDbContext(DbContextOptions<FitzobitDbContext> options, ICurrentUser currentUser, IClock clock)
-    : DbContext(options), IFitzobitDbContext
+    : DbContext(options), IFitzobitDbContext, IDataProtectionKeyContext
 {
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Plan> Plans => Set<Plan>();
@@ -29,6 +30,9 @@ public class FitzobitDbContext(DbContextOptions<FitzobitDbContext> options, ICur
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Domain.Users.AppUser> Users => Set<Domain.Users.AppUser>();
     public DbSet<Domain.Messaging.WhatsAppMessage> WhatsAppMessages => Set<Domain.Messaging.WhatsAppMessage>();
+
+    /// <summary>ASP.NET Core data-protection keys (sign-in and CSRF cookies), so sessions survive restarts on hosts without a lasting disk.</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

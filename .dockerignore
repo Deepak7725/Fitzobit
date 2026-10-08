@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/*.user
+**/.vs/
+**/TestResults/
+.git/
+artifacts/
+data/
+samples/
+tests/
+src/Fitzobit.Web/wwwroot/
+src/Fitzobit.UI/dist/
+*.tsbuildinfo
+HANDOFF.md

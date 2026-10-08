@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Fitzobit.Tests;
 
@@ -31,30 +32,79 @@ public sealed class FixedClock(DateTime utcNow) : IClock
 }
 
 /// <summary>
-/// A real SQLite database (in-memory, kept alive by an open connection) built by running the actual
-/// migrations, so constraints and indexes behave exactly as in data\fitzobit.db.
+/// A real database built by running the actual migrations, so constraints and indexes behave exactly as in production.
+/// By default SQLite in memory (kept alive by an open connection). When FITZOBIT_TEST_PG holds a PostgreSQL connection
+/// string allowed to create databases, every test gets its own throw-away PostgreSQL database instead.
 /// </summary>
 public sealed class TestDatabase : IDisposable
 {
-    private readonly SqliteConnection _connection;
+    private readonly SqliteConnection? _connection;
+    private readonly PostgresTestDatabase? _postgres;
 
     public FixedClock Clock { get; } = new(new DateTime(2026, 10, 7, 9, 0, 0, DateTimeKind.Utc));
     public TestUser User { get; } = new();
 
     public TestDatabase()
     {
-        _connection = new SqliteConnection("Data Source=:memory:");
-        _connection.Open();
+        if (PostgresTestDatabase.IsEnabled) _postgres = new PostgresTestDatabase();
+        else
+        {
+            _connection = new SqliteConnection("Data Source=:memory:");
+            _connection.Open();
+        }
         using var db = CreateContext();
         db.Database.Migrate();
     }
 
-    public FitzobitDbContext CreateContext(params IInterceptor[] interceptors) =>
-        new(new DbContextOptionsBuilder<FitzobitDbContext>().UseSqlite(_connection).AddInterceptors(interceptors).Options, User, Clock);
+    public FitzobitDbContext CreateContext(params IInterceptor[] interceptors)
+    {
+        var builder = new DbContextOptionsBuilder<FitzobitDbContext>();
+        if (_postgres is not null)
+            DatabaseProviderConfigurator.Configure(builder,
+                new DatabaseOptions { Provider = DatabaseProviders.PostgreSql, ConnectionString = _postgres.ConnectionString }, Path.GetTempPath());
+        else builder.UseSqlite(_connection!);
+        return new FitzobitDbContext(builder.AddInterceptors(interceptors).Options, User, Clock);
+    }
 
     public IAuditLogger AuditFor(FitzobitDbContext db) => new AuditLogger(db, User, Clock);
 
-    public void Dispose() => _connection.Dispose();
+    public void Dispose()
+    {
+        _connection?.Dispose();
+        _postgres?.Dispose();
+    }
+}
+
+/// <summary>A uniquely named PostgreSQL database for one test, dropped afterwards (only when FITZOBIT_TEST_PG is set).</summary>
+public sealed class PostgresTestDatabase : IDisposable
+{
+    private static readonly string? AdminConnectionString = Environment.GetEnvironmentVariable("FITZOBIT_TEST_PG");
+    private readonly string _name = $"fitzobit_test_{Guid.NewGuid():N}";
+
+    public static bool IsEnabled => !string.IsNullOrWhiteSpace(AdminConnectionString);
+
+    public string ConnectionString { get; }
+
+    public PostgresTestDatabase()
+    {
+        Execute($"CREATE DATABASE \"{_name}\"");
+        ConnectionString = new NpgsqlConnectionStringBuilder(DatabaseProviderConfigurator.ToNpgsqlConnectionString(AdminConnectionString!))
+            { Database = _name }.ConnectionString;
+    }
+
+    public void Dispose()
+    {
+        NpgsqlConnection.ClearAllPools();
+        Execute($"DROP DATABASE IF EXISTS \"{_name}\" WITH (FORCE)");
+    }
+
+    private static void Execute(string sql)
+    {
+        using var connection = new NpgsqlConnection(DatabaseProviderConfigurator.ToNpgsqlConnectionString(AdminConnectionString!));
+        connection.Open();
+        using var command = new NpgsqlCommand(sql, connection);
+        command.ExecuteNonQuery();
+    }
 }
 
 public static class TestPaths

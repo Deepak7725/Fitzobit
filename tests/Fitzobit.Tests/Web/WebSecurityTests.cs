@@ -74,6 +74,64 @@ public class WebSecurityTests
             await client.PostAsync("/api/auth/setup", new { userName = "owner", displayName = "Owner", password = ApiClient.AdminPassword }));
     }
 
+    [Theory]
+    [InlineData(null, null, true)]
+    [InlineData("X-Forwarded-For", "203.0.113.7", false)]
+    [InlineData("Tailscale-Funnel-Request", "?1", false)]
+    [InlineData("CF-Connecting-IP", "203.0.113.7", false)]
+    public async Task Setup_is_local_only_and_never_through_a_tunnel(string? header, string? value, bool allowed)
+    {
+        using var host = new WebTestHost(allowRemoteSetup: false, loopbackClient: true);
+        var client = host.NewClient();
+        if (header is not null) client.Http.DefaultRequestHeaders.Add(header, value);
+
+        var state = await client.RefreshAsync();
+        Assert.Equal(allowed, state.GetProperty("setupAllowedHere").GetBoolean());
+        var setup = await client.PostAsync("/api/auth/setup", new { userName = "owner", displayName = "Owner", password = ApiClient.AdminPassword });
+        HttpAssert.Status(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, setup);
+    }
+
+    [Fact]
+    public async Task Remote_setup_with_a_setup_code_needs_the_exact_code()
+    {
+        using var host = new WebTestHost(allowRemoteSetup: false, setupCode: "Xk7-secret-setup-code");
+        var client = host.NewClient();
+
+        var state = await client.RefreshAsync();
+        Assert.True(state.GetProperty("setupAllowedHere").GetBoolean());
+        Assert.True(state.GetProperty("setupCodeRequired").GetBoolean());
+
+        HttpAssert.Status(HttpStatusCode.Forbidden, await client.PostAsync("/api/auth/setup",
+            new { userName = "owner", displayName = "Owner", password = ApiClient.AdminPassword }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await client.PostAsync("/api/auth/setup",
+            new { userName = "owner", displayName = "Owner", password = ApiClient.AdminPassword, setupCode = "wrong" }));
+        HttpAssert.Status(HttpStatusCode.OK, await client.PostAsync("/api/auth/setup",
+            new { userName = "owner", displayName = "Owner", password = ApiClient.AdminPassword, setupCode = " Xk7-secret-setup-code " }));
+
+        var after = await client.RefreshAsync();
+        Assert.False(after.GetProperty("setupRequired").GetBoolean());
+        Assert.False(after.GetProperty("setupCodeRequired").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Health_endpoint_is_public_and_needs_no_session()
+    {
+        using var host = new WebTestHost();
+        var response = await host.NewClient().GetAsync("/api/health");
+        HttpAssert.Status(HttpStatusCode.OK, response);
+        Assert.Contains("ok", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Plain_http_behind_a_tls_proxy_still_works()
+    {
+        using var host = new WebTestHost();
+        var client = new ApiClient(host.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { BaseAddress = new Uri("http://localhost") }));
+
+        var state = await client.RefreshAsync();
+        Assert.True(state.GetProperty("setupRequired").GetBoolean());
+    }
+
     [Fact]
     public async Task Managers_operate_but_cannot_reach_administration()
     {

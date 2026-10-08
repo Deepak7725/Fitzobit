@@ -14,9 +14,15 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <!-- The catalogue workbook ships with the app, so a published deployment can seed the catalogue. -->
+  <ItemGroup>
+    <None Include="..\..\Fitzobit_WhatsApp_Catalogue.xlsx" Link="Fitzobit_WhatsApp_Catalogue.xlsx" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Fitzobit.Application\Fitzobit.Application.csproj" />
     <ProjectReference Include="..\Fitzobit.Infrastructure\Fitzobit.Infrastructure.csproj" />
+    <ProjectReference Include="..\Fitzobit.Infrastructure.PostgreSql\Fitzobit.Infrastructure.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

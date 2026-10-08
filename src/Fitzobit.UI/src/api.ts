@@ -406,6 +406,7 @@ export interface SignedInUser {
 export interface AuthState {
   setupRequired: boolean;
   setupAllowedHere: boolean;
+  setupCodeRequired: boolean;
   authenticated: boolean;
   user: SignedInUser | null;
 }
@@ -728,8 +729,8 @@ export const api = {
 
   authState: () => get<AuthState>('/api/auth/state'),
   login: (userName: string, password: string) => send<SignedInUser>('POST', '/api/auth/login', { userName, password }),
-  setup: (userName: string, displayName: string, password: string) =>
-    send<SignedInUser>('POST', '/api/auth/setup', { userName, displayName, password }),
+  setup: (userName: string, displayName: string, password: string, setupCode?: string) =>
+    send<SignedInUser>('POST', '/api/auth/setup', { userName, displayName, password, setupCode }),
   logout: () => send('POST', '/api/auth/logout'),
   changePassword: (currentPassword: string, newPassword: string) => send('POST', '/api/auth/change-password', { currentPassword, newPassword }),
 

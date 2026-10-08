@@ -185,20 +185,33 @@ public sealed class CustomerQueryService(IFitzobitDbContext db)
         return rows;
     }
 
+    /// <summary>
+    /// Server-side sort. Empty values (no location, pincode, plan or group) always come last in both directions;
+    /// SQLite and PostgreSQL would otherwise disagree on where NULLs go.
+    /// </summary>
     public static IQueryable<CustomerRow> ApplySort(IQueryable<CustomerRow> rows, string? sort, bool desc)
     {
         IOrderedQueryable<CustomerRow> ordered = (sort ?? "customerId").ToLowerInvariant() switch
         {
             "customername" => desc ? rows.OrderByDescending(r => r.CustomerName) : rows.OrderBy(r => r.CustomerName),
-            "location" => desc ? rows.OrderByDescending(r => r.Location) : rows.OrderBy(r => r.Location),
-            "pincode" => desc ? rows.OrderByDescending(r => r.Pincode) : rows.OrderBy(r => r.Pincode),
-            "plan" => desc ? rows.OrderByDescending(r => r.PlanName) : rows.OrderBy(r => r.PlanName),
-            "group" => desc ? rows.OrderByDescending(r => r.GroupName) : rows.OrderBy(r => r.GroupName),
+            "location" => EmptyLast(rows, r => r.Location, desc),
+            "pincode" => EmptyLast(rows, r => r.Pincode, desc),
+            "plan" => EmptyLast(rows, r => r.PlanName, desc),
+            "group" => EmptyLast(rows, r => r.GroupName, desc),
             "createdat" => desc ? rows.OrderByDescending(r => r.CreatedAt) : rows.OrderBy(r => r.CreatedAt),
             "updatedat" => desc ? rows.OrderByDescending(r => r.UpdatedAt) : rows.OrderBy(r => r.UpdatedAt),
             _ => desc ? rows.OrderByDescending(r => r.CustomerId) : rows.OrderBy(r => r.CustomerId),
         };
         return ordered.ThenBy(r => r.Id);
+    }
+
+    private static IOrderedQueryable<CustomerRow> EmptyLast(IQueryable<CustomerRow> rows,
+        System.Linq.Expressions.Expression<Func<CustomerRow, string?>> key, bool desc)
+    {
+        var isEmpty = System.Linq.Expressions.Expression.Lambda<Func<CustomerRow, bool>>(
+            System.Linq.Expressions.Expression.Equal(key.Body, System.Linq.Expressions.Expression.Constant(null, typeof(string))), key.Parameters);
+        var emptyLast = rows.OrderBy(isEmpty);
+        return desc ? emptyLast.ThenByDescending(key) : emptyLast.ThenBy(key);
     }
 
     public async Task<PagedResult<CustomerListItemDto>> ListAsync(CustomerFilter filter, int page, int pageSize, CancellationToken ct = default)

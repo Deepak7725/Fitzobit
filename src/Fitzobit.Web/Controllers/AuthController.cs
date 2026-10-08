@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using Fitzobit.Application.Users;
 using Fitzobit.Domain.Users;
 using Fitzobit.Web.Infrastructure;
@@ -12,9 +14,10 @@ using Microsoft.AspNetCore.RateLimiting;
 namespace Fitzobit.Web.Controllers;
 
 public sealed record SignedInUserDto(int Id, string UserName, string DisplayName, string Role);
-public sealed record AuthStateDto(bool SetupRequired, bool SetupAllowedHere, bool Authenticated, SignedInUserDto? User);
+/// <param name="SetupCodeRequired">First-run setup over the network needs the server's Auth:SetupCode.</param>
+public sealed record AuthStateDto(bool SetupRequired, bool SetupAllowedHere, bool SetupCodeRequired, bool Authenticated, SignedInUserDto? User);
 public sealed record LoginRequest(string UserName, string Password);
-public sealed record SetupRequest(string UserName, string DisplayName, string Password);
+public sealed record SetupRequest(string UserName, string DisplayName, string Password, string? SetupCode = null);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 /// <summary>
@@ -34,22 +37,33 @@ public sealed class AuthController(AuthService auth, UserService users, IAntifor
         IssueCsrfCookie();
         var setupRequired = await auth.SetupRequiredAsync(ct);
         var signedIn = User.Identity?.IsAuthenticated == true && User.UserId() is not null;
+        var setupMode = GetSetupMode();
         return new AuthStateDto(
             setupRequired,
-            setupRequired && SetupAllowedFromHere(),
+            setupRequired && setupMode != SetupMode.NotAllowed,
+            setupRequired && setupMode == SetupMode.WithCode,
             signedIn,
             signedIn ? new SignedInUserDto(User.UserId()!.Value, User.Identity!.Name!, CurrentDisplayName(), CurrentRole()) : null);
     }
 
-    /// <summary>Creates the first administrator. Only while no user exists, and only from this machine unless Auth:AllowRemoteSetup is set.</summary>
+    /// <summary>
+    /// Creates the first administrator, only while no user exists: from this machine, over the network with the server's
+    /// Auth:SetupCode, or anywhere when Auth:AllowRemoteSetup is set.
+    /// </summary>
     [HttpPost("setup")]
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
     public async Task<IActionResult> Setup(SetupRequest request, CancellationToken ct)
     {
-        if (!SetupAllowedFromHere())
-            return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Setup not allowed",
-                detail: "First-run setup must be completed on the server itself.");
+        switch (GetSetupMode())
+        {
+            case SetupMode.NotAllowed:
+                return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Setup not allowed",
+                    detail: "First-run setup must be completed on the server itself.");
+            case SetupMode.WithCode when !SetupCodeMatches(request.SetupCode):
+                return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Setup not allowed",
+                    detail: "The setup code is missing or not correct.");
+        }
         var user = await auth.CreateFirstAdminAsync(request.UserName, request.DisplayName, request.Password, ct);
         await SignInAsync(user);
         return Ok(ToDto(user));
@@ -103,9 +117,33 @@ public sealed class AuthController(AuthService auth, UserService users, IAntifor
         });
     }
 
-    private bool SetupAllowedFromHere() =>
-        configuration.GetValue("Auth:AllowRemoteSetup", false)
-        || HttpContext.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip);
+    private enum SetupMode { NotAllowed, Open, WithCode }
+
+    private SetupMode GetSetupMode()
+    {
+        if (configuration.GetValue("Auth:AllowRemoteSetup", false) || IsLocalRequest()) return SetupMode.Open;
+        return string.IsNullOrWhiteSpace(configuration["Auth:SetupCode"]) ? SetupMode.NotAllowed : SetupMode.WithCode;
+    }
+
+    private bool SetupCodeMatches(string? code)
+    {
+        var expected = Encoding.UTF8.GetBytes(configuration["Auth:SetupCode"]!.Trim());
+        var given = Encoding.UTF8.GetBytes((code ?? "").Trim());
+        return CryptographicOperations.FixedTimeEquals(expected, given);
+    }
+
+    /// <summary>
+    /// Local means a browser on this machine talking to the app directly. A request that came through a tunnel or
+    /// proxy (Tailscale Funnel, Cloudflare, a reverse proxy) also arrives from loopback, so any forwarding header disqualifies it.
+    /// </summary>
+    private bool IsLocalRequest()
+    {
+        if (ProxyHeaders.Any(Request.Headers.ContainsKey)) return false;
+        return HttpContext.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip);
+    }
+
+    private static readonly string[] ProxyHeaders =
+        ["X-Forwarded-For", "X-Original-For", "Forwarded", "Tailscale-Funnel-Request", "CF-Connecting-IP", "X-Real-IP"];
 
     private string CurrentDisplayName() => User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value ?? User.Identity!.Name!;
     private string CurrentRole() => User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";

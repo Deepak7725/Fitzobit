@@ -131,9 +131,13 @@ public class CustomerViewDataTests
         var byName = await queries.ListAsync(new CustomerFilter { Sort = "customerName" }, 1, 10);
         Assert.Equal("Anitha Raman", byName.Items[0].CustomerName);
 
+        // Customers without a group come last in both directions, on SQLite and PostgreSQL alike.
         var byGroupDesc = await queries.ListAsync(new CustomerFilter { Sort = "group", Desc = true }, 1, 100);
         Assert.Equal("Coimbatore South", byGroupDesc.Items[0].GroupName);
         Assert.Null(byGroupDesc.Items[^1].GroupName);
+        var byGroupAsc = await queries.ListAsync(new CustomerFilter { Sort = "group" }, 1, 100);
+        Assert.Equal("Coimbatore North", byGroupAsc.Items[0].GroupName);
+        Assert.Null(byGroupAsc.Items[^1].GroupName);
 
         var byPlan = await queries.ListAsync(new CustomerFilter { Sort = "plan" }, 1, 100);
         Assert.Equal(byPlan.Items.Select(i => i.PlanName).Order(StringComparer.Ordinal), byPlan.Items.Select(i => i.PlanName));

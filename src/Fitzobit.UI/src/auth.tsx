@@ -74,7 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  if (state.setupRequired) return <SetupScreen allowed={state.setupAllowedHere} onDone={refresh} />;
+  if (state.setupRequired)
+    return <SetupScreen allowed={state.setupAllowedHere} codeRequired={state.setupCodeRequired} onDone={refresh} />;
   if (!state.authenticated || !state.user)
     return <LoginScreen expired={expired} onDone={async () => { setExpired(false); await refresh(); }} />;
 
@@ -150,7 +151,8 @@ function LoginScreen({ expired, onDone }: { expired: boolean; onDone: () => Prom
   );
 }
 
-function SetupScreen({ allowed, onDone }: { allowed: boolean; onDone: () => Promise<void> }) {
+function SetupScreen({ allowed, codeRequired, onDone }: { allowed: boolean; codeRequired: boolean; onDone: () => Promise<void> }) {
+  const [setupCode, setSetupCode] = useState('');
   const [userName, setUserName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -163,7 +165,7 @@ function SetupScreen({ allowed, onDone }: { allowed: boolean; onDone: () => Prom
       <AuthScreen title="Setup required" subtitle="No administrator account exists yet.">
         <div className="auth-note">
           <ShieldCheck size={16} /> For security, the first administrator can only be created from a browser on the server itself
-          (http://localhost). Open the app there to finish setup.
+          (http://localhost), or with a setup code configured on the server (Auth__SetupCode).
         </div>
       </AuthScreen>
     );
@@ -177,7 +179,7 @@ function SetupScreen({ allowed, onDone }: { allowed: boolean; onDone: () => Prom
     setBusy(true);
     setError(null);
     try {
-      await api.setup(userName, displayName, password);
+      await api.setup(userName, displayName, password, codeRequired ? setupCode : undefined);
       await onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup failed.');
@@ -189,9 +191,16 @@ function SetupScreen({ allowed, onDone }: { allowed: boolean; onDone: () => Prom
   return (
     <AuthScreen title="Create the administrator" subtitle="First-run setup: this account can manage users and settings. It is shown only once.">
       <form onSubmit={submit} className="auth-form">
+        {codeRequired && (
+          <label className="field">
+            Setup code
+            <input className="input" autoComplete="off" autoFocus value={setupCode} onChange={(e) => setSetupCode(e.target.value)} required />
+            <small className="field-hint">The Auth__SetupCode value from the server's settings (on Render: your service → Environment).</small>
+          </label>
+        )}
         <label className="field">
           Your name
-          <input className="input" autoComplete="name" autoFocus value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+          <input className="input" autoComplete="name" autoFocus={!codeRequired} value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
         </label>
         <label className="field">
           User name

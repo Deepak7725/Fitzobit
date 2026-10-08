@@ -1,0 +1,18 @@
+# Render Blueprint for Fitzobit (free web service). The database is Neon (free PostgreSQL); see deploy/RENDER.md.
+services:
+  - type: web
+    name: fitzobit
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health     # does not touch the database, so Neon can sleep
+    autoDeploy: true
+    envVars:
+      - key: Database__Provider
+        value: PostgreSQL
+      - key: Database__ConnectionString
+        sync: false                  # paste the Neon connection string when Render asks (kept secret)
+      - key: ForwardedHeaders__TrustAllProxies
+        value: "true"                # the app is only reachable through Render's proxy
+      - key: Auth__SetupCode
+        generateValue: true          # random secret; the first-run setup screen asks for it

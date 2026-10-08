@@ -20,3 +20,6 @@ samples/*.local.json
 
 ## TypeScript incremental build info
 *.tsbuildinfo
+
+## Publish output (deploy/publish-azure.ps1)
+artifacts/
