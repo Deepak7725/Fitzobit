@@ -1,9 +1,8 @@
 using Fitzobit.Domain.Auditing;
-using Fitzobit.Domain.Catalogue;
 using Fitzobit.Domain.Customers;
 using Fitzobit.Domain.DeliveryGroups;
-using Fitzobit.Domain.Imports;
-using Fitzobit.Domain.Plans;
+using Fitzobit.Domain.Dictionaries;
+using Fitzobit.Domain.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -17,151 +16,97 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         b.Property(c => c.CustomerName).HasMaxLength(200).IsRequired();
         b.Property(c => c.PhoneNumber).HasMaxLength(30).IsRequired();
         b.Property(c => c.NormalizedPhoneNumber).HasMaxLength(20);
-        b.Property(c => c.Location).HasMaxLength(500);
-        b.Property(c => c.NormalizedLocation).HasMaxLength(500);
+        b.Property(c => c.Address).HasMaxLength(500);
+        b.Property(c => c.NormalizedAddress).HasMaxLength(500);
         b.Property(c => c.Pincode).HasMaxLength(10);
         b.Property(c => c.Locality).HasMaxLength(200);
         b.Property(c => c.City).HasMaxLength(100);
-        b.Property(c => c.OriginalPlan).HasMaxLength(300);
+        b.Property(c => c.Latitude).HasPrecision(9, 6);
+        b.Property(c => c.Longitude).HasPrecision(9, 6);
+        b.Property(c => c.LegacyPlan).HasMaxLength(500);
+        b.Property(c => c.GeocodeMessage).HasMaxLength(300);
+        b.Property(c => c.GeocodeSource).HasMaxLength(30);
+        b.Property(c => c.Version).IsRowVersion();
         b.Property(c => c.CreatedBy).HasMaxLength(100);
         b.Property(c => c.UpdatedBy).HasMaxLength(100);
 
         b.HasIndex(c => c.CustomerId).IsUnique();
         b.HasIndex(c => c.NormalizedPhoneNumber);
         b.HasIndex(c => c.Pincode);
-        b.HasIndex(c => c.Status);
+        b.HasIndex(c => new { c.GeocodeStatus, c.GeocodeNextAttemptAt });
         b.HasIndex(c => c.CreatedAt);
 
-        b.HasOne(c => c.Plan).WithMany().HasForeignKey(c => c.PlanId).OnDelete(DeleteBehavior.SetNull);
-        b.HasOne(c => c.PricingTier).WithMany().HasForeignKey(c => c.PricingTierId).OnDelete(DeleteBehavior.SetNull);
-        b.HasOne<ImportBatch>().WithMany().HasForeignKey(c => c.SourceImportBatchId).OnDelete(DeleteBehavior.SetNull);
+        // Drop-down values are never deleted while customers use them.
+        b.HasOne(c => c.Status).WithMany().HasForeignKey(c => c.StatusId).OnDelete(DeleteBehavior.Restrict);
+
+        b.ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_Customers_Latitude", "\"Latitude\" IS NULL OR \"Latitude\" BETWEEN -90 AND 90");
+            t.HasCheckConstraint("CK_Customers_Longitude", "\"Longitude\" IS NULL OR \"Longitude\" BETWEEN -180 AND 180");
+        });
     }
 }
 
-internal sealed class PlanAliasConfiguration : IEntityTypeConfiguration<PlanAlias>
+internal sealed class CustomerPackageConfiguration : IEntityTypeConfiguration<CustomerPackage>
 {
-    public void Configure(EntityTypeBuilder<PlanAlias> b)
+    public void Configure(EntityTypeBuilder<CustomerPackage> b)
     {
-        b.Property(a => a.AliasKey).HasMaxLength(300).IsRequired();
-        b.Property(a => a.OriginalText).HasMaxLength(300).IsRequired();
-        b.Property(a => a.CreatedBy).HasMaxLength(100);
-        b.HasIndex(a => a.AliasKey).IsUnique();
-        b.HasOne(a => a.Plan).WithMany().HasForeignKey(a => a.PlanId).OnDelete(DeleteBehavior.Cascade);
-        b.HasOne(a => a.PricingTier).WithMany().HasForeignKey(a => a.PricingTierId).OnDelete(DeleteBehavior.SetNull);
+        b.ToTable("CustomerPackages", t =>
+        {
+            t.HasCheckConstraint("CK_CustomerPackages_Quantity", $"\"Quantity\" BETWEEN 1 AND {CustomerPackage.MaxQuantity}");
+            t.HasCheckConstraint("CK_CustomerPackages_PausedCount", $"\"PausedCount\" BETWEEN 0 AND {CustomerPackage.MaxPauses}");
+            t.HasCheckConstraint("CK_CustomerPackages_Dates", "\"EndDate\" >= \"StartDate\"");
+        });
+        b.Property(p => p.Version).IsRowVersion();
+        b.Property(p => p.CreatedBy).HasMaxLength(100);
+        b.Property(p => p.UpdatedBy).HasMaxLength(100);
+        b.HasIndex(p => new { p.CustomerId, p.StartDate });
+        b.HasIndex(p => p.EndDate);
+        b.HasOne(p => p.Customer).WithMany(c => c.Packages).HasForeignKey(p => p.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        // Drop-down values are never deleted while packages use them.
+        b.HasOne(p => p.Preference).WithMany().HasForeignKey(p => p.PreferenceId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(p => p.MealType).WithMany().HasForeignKey(p => p.MealTypeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(p => p.Frequency).WithMany().HasForeignKey(p => p.FrequencyId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 
-internal sealed class ImportRowConfiguration : IEntityTypeConfiguration<ImportRow>
+internal sealed class PackagePauseConfiguration : IEntityTypeConfiguration<PackagePause>
 {
-    public void Configure(EntityTypeBuilder<ImportRow> b)
+    public void Configure(EntityTypeBuilder<PackagePause> b)
     {
-        // Raw* columns keep the cell text exactly as read; lengths are generous on purpose.
-        b.Property(r => r.RawCustomerId).HasMaxLength(500);
-        b.Property(r => r.RawCustomerName).HasMaxLength(1000);
-        b.Property(r => r.RawPhoneNumber).HasMaxLength(200);
-        b.Property(r => r.RawLocation).HasMaxLength(2000);
-        b.Property(r => r.RawPlan).HasMaxLength(500);
-        b.Property(r => r.CustomerId).HasMaxLength(500);
-        b.Property(r => r.CustomerName).HasMaxLength(1000);
-        b.Property(r => r.NormalizedPhoneNumber).HasMaxLength(20);
-        b.Property(r => r.NormalizedLocation).HasMaxLength(2000);
-        b.Property(r => r.Pincode).HasMaxLength(10);
-        b.Property(r => r.Locality).HasMaxLength(200);
-        b.Property(r => r.City).HasMaxLength(100);
-        b.Property(r => r.PlanKey).HasMaxLength(300);
-        b.Property(r => r.IssueCodes).HasMaxLength(1000).IsRequired();
-        b.Property(r => r.SuggestionReason).HasMaxLength(100);
-
-        b.HasIndex(r => new { r.ImportBatchId, r.RowNumber }).IsUnique();
-        b.HasIndex(r => new { r.ImportBatchId, r.Status });
-        b.HasIndex(r => new { r.ImportBatchId, r.Pincode });
-        b.HasIndex(r => new { r.ImportBatchId, r.PlanKey });
-
-        b.HasOne(r => r.ImportBatch).WithMany(i => i.Rows).HasForeignKey(r => r.ImportBatchId).OnDelete(DeleteBehavior.Cascade);
-        b.HasOne(r => r.TargetDeliveryGroup).WithMany().HasForeignKey(r => r.TargetDeliveryGroupId).OnDelete(DeleteBehavior.SetNull);
-        b.HasOne(r => r.TargetDraftGroup).WithMany().HasForeignKey(r => r.TargetDraftGroupId).OnDelete(DeleteBehavior.SetNull);
-        b.HasOne<DeliveryGroup>().WithMany().HasForeignKey(r => r.SuggestedDeliveryGroupId).OnDelete(DeleteBehavior.SetNull);
-        b.HasOne<ImportDraftGroup>().WithMany().HasForeignKey(r => r.SuggestedDraftGroupId).OnDelete(DeleteBehavior.SetNull);
+        b.ToTable("PackagePauses");
+        b.Property(p => p.Reason).HasMaxLength(300);
+        b.Property(p => p.CreatedBy).HasMaxLength(100);
+        b.HasIndex(p => new { p.PackageId, p.PausedDate }).IsUnique();
+        b.HasIndex(p => p.PausedDate);
+        // Deleting a package (only allowed before its first delivery) removes its pauses with it.
+        b.HasOne(p => p.Package).WithMany(k => k.Pauses).HasForeignKey(p => p.PackageId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
-internal sealed class ImportDraftGroupConfiguration : IEntityTypeConfiguration<ImportDraftGroup>
+internal sealed class CustomerNoteConfiguration : IEntityTypeConfiguration<CustomerNote>
 {
-    public void Configure(EntityTypeBuilder<ImportDraftGroup> b)
+    public void Configure(EntityTypeBuilder<CustomerNote> b)
     {
-        b.Property(d => d.Name).HasMaxLength(150).IsRequired();
-        b.Property(d => d.Description).HasMaxLength(1000);
-        b.HasIndex(d => d.ImportBatchId);
-        b.HasOne(d => d.ImportBatch).WithMany(i => i.DraftGroups).HasForeignKey(d => d.ImportBatchId).OnDelete(DeleteBehavior.Cascade);
-        b.HasOne<DeliveryGroup>().WithMany().HasForeignKey(d => d.CreatedDeliveryGroupId).OnDelete(DeleteBehavior.SetNull);
+        b.ToTable("CustomerNotes");
+        b.Property(n => n.Text).HasMaxLength(CustomerNote.MaxLength).IsRequired();
+        b.Property(n => n.CreatedBy).HasMaxLength(100);
+        b.Property(n => n.UpdatedBy).HasMaxLength(100);
+        b.HasIndex(n => new { n.CustomerId, n.CreatedAt });
+        b.HasOne(n => n.Customer).WithMany(c => c.Notes).HasForeignKey(n => n.CustomerId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 
-internal sealed class ImportPlanMappingConfiguration : IEntityTypeConfiguration<ImportPlanMapping>
+internal sealed class DictionaryEntryConfiguration : IEntityTypeConfiguration<DictionaryEntry>
 {
-    public void Configure(EntityTypeBuilder<ImportPlanMapping> b)
+    public void Configure(EntityTypeBuilder<DictionaryEntry> b)
     {
-        b.Property(m => m.PlanKey).HasMaxLength(300).IsRequired();
-        b.Property(m => m.ExampleText).HasMaxLength(300).IsRequired();
-        b.Property(m => m.CandidatePlanIdsJson).HasMaxLength(1000);
-        b.Property(m => m.Note).HasMaxLength(500);
-        b.HasIndex(m => new { m.ImportBatchId, m.PlanKey }).IsUnique();
-        b.HasOne(m => m.ImportBatch).WithMany(i => i.PlanMappings).HasForeignKey(m => m.ImportBatchId).OnDelete(DeleteBehavior.Cascade);
-        b.HasOne<Plan>().WithMany().HasForeignKey(m => m.PlanId).OnDelete(DeleteBehavior.SetNull);
-        b.HasOne<CataloguePricingTier>().WithMany().HasForeignKey(m => m.PricingTierId).OnDelete(DeleteBehavior.SetNull);
-    }
-}
-
-internal sealed class PlanConfiguration : IEntityTypeConfiguration<Plan>
-{
-    public void Configure(EntityTypeBuilder<Plan> b)
-    {
-        b.Property(p => p.Name).HasMaxLength(300).IsRequired();
-        b.Property(p => p.Code).HasMaxLength(100).IsRequired();
-        b.Property(p => p.Category).HasMaxLength(100);
-        b.Property(p => p.Description).HasMaxLength(1000);
-
-        b.HasIndex(p => p.Code).IsUnique();
-        b.HasIndex(p => p.Name).IsUnique();
-        b.HasIndex(p => p.Status);
-
-        b.HasOne(p => p.CatalogueItem).WithMany().HasForeignKey(p => p.CatalogueItemId).OnDelete(DeleteBehavior.SetNull);
-    }
-}
-
-internal sealed class CatalogueItemConfiguration : IEntityTypeConfiguration<CatalogueItem>
-{
-    public void Configure(EntityTypeBuilder<CatalogueItem> b)
-    {
-        b.Property(i => i.Name).HasMaxLength(300).IsRequired();
-        b.Property(i => i.Category).HasMaxLength(100);
-        b.Property(i => i.Term).HasMaxLength(100);
-        b.Property(i => i.Description).HasMaxLength(4000);
-        b.Property(i => i.Currency).HasMaxLength(3).IsRequired();
-        b.Property(i => i.DurationText).HasMaxLength(200);
-        b.Property(i => i.IncludedItems).HasMaxLength(2000);
-        b.Property(i => i.Availability).HasMaxLength(200);
-        b.Property(i => i.Source).HasMaxLength(500);
-        b.Property(i => i.SourceNotes).HasMaxLength(2000);
-
-        b.HasIndex(i => i.Name).IsUnique();
-        b.HasIndex(i => i.Category);
-
-        b.HasMany(i => i.PricingTiers).WithOne(t => t.CatalogueItem)
-            .HasForeignKey(t => t.CatalogueItemId).OnDelete(DeleteBehavior.Cascade);
-    }
-}
-
-internal sealed class CataloguePricingTierConfiguration : IEntityTypeConfiguration<CataloguePricingTier>
-{
-    public void Configure(EntityTypeBuilder<CataloguePricingTier> b)
-    {
-        b.Property(t => t.TierName).HasMaxLength(150).IsRequired();
-        b.Property(t => t.Currency).HasMaxLength(3).IsRequired();
-        b.Property(t => t.Description).HasMaxLength(500);
-        b.Property(t => t.Source).HasMaxLength(300);
-
-        b.HasIndex(t => new { t.CatalogueItemId, t.TierName }).IsUnique();
+        b.Property(e => e.Code).HasMaxLength(50).IsRequired();
+        b.Property(e => e.DisplayName).HasMaxLength(100).IsRequired();
+        b.Property(e => e.CreatedBy).HasMaxLength(100);
+        b.Property(e => e.UpdatedBy).HasMaxLength(100);
+        b.HasIndex(e => new { e.DictionaryType, e.Code }).IsUnique();
+        b.HasIndex(e => new { e.DictionaryType, e.SortOrder });
     }
 }
 
@@ -169,13 +114,24 @@ internal sealed class DeliveryGroupConfiguration : IEntityTypeConfiguration<Deli
 {
     public void Configure(EntityTypeBuilder<DeliveryGroup> b)
     {
-        b.Property(g => g.Name).HasMaxLength(150).IsRequired();
         b.Property(g => g.Description).HasMaxLength(1000);
         b.Property(g => g.CreatedBy).HasMaxLength(100);
         b.Property(g => g.UpdatedBy).HasMaxLength(100);
 
-        b.HasIndex(g => g.Name).IsUnique();
+        b.HasIndex(g => g.GroupNumber).IsUnique();
         b.HasIndex(g => g.Status);
+        b.ToTable(t => t.HasCheckConstraint("CK_DeliveryGroups_GroupNumber", "\"GroupNumber\" > 0"));
+    }
+}
+
+internal sealed class AppSettingConfiguration : IEntityTypeConfiguration<AppSetting>
+{
+    public void Configure(EntityTypeBuilder<AppSetting> b)
+    {
+        b.HasKey(s => s.Key);
+        b.Property(s => s.Key).HasMaxLength(100);
+        b.Property(s => s.Value).HasMaxLength(2000);
+        b.Property(s => s.UpdatedBy).HasMaxLength(100);
     }
 }
 
@@ -186,8 +142,7 @@ internal sealed class CustomerDeliveryGroupAssignmentConfiguration : IEntityType
         b.Property(a => a.AssignedBy).HasMaxLength(100);
 
         // The filtered unique index on CustomerId (active rows only) is declared in FitzobitDbContext. It enforces the
-        // rule but SQLite only uses a partial index when a query repeats its exact filter, so lookups such as
-        // "customers without an active group" need these plain composite indexes to avoid a scan per customer.
+        // rule; lookups such as "customers without an active group" use these plain composite indexes.
         b.HasIndex(a => new { a.CustomerId, a.IsActive });
         b.HasIndex(a => new { a.DeliveryGroupId, a.IsActive });
 
@@ -212,22 +167,6 @@ internal sealed class CustomerDeliveryGroupAssignmentHistoryConfiguration : IEnt
         b.HasOne(h => h.Customer).WithMany().HasForeignKey(h => h.CustomerId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(h => h.PreviousGroup).WithMany().HasForeignKey(h => h.PreviousGroupId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(h => h.NewGroup).WithMany().HasForeignKey(h => h.NewGroupId).OnDelete(DeleteBehavior.Restrict);
-    }
-}
-
-internal sealed class ImportBatchConfiguration : IEntityTypeConfiguration<ImportBatch>
-{
-    public void Configure(EntityTypeBuilder<ImportBatch> b)
-    {
-        b.Property(i => i.FileName).HasMaxLength(260).IsRequired();
-        b.Property(i => i.SheetName).HasMaxLength(100);
-        b.Property(i => i.UploadedBy).HasMaxLength(100);
-        b.Property(i => i.FailureReason).HasMaxLength(4000);
-        b.Property(i => i.FileMessages).HasMaxLength(4000);
-
-        b.HasIndex(i => i.UploadedAt);
-        b.HasIndex(i => i.Status);
-        b.HasIndex(i => i.CreatedAt);
     }
 }
 

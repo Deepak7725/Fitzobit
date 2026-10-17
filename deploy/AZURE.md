@@ -1,7 +1,7 @@
 # Deploying Fitzobit to Azure App Service (Free F1)
 
-Result: Fitzobit runs at `https://<your-app-name>.azurewebsites.net`, with its SQLite database on the app's
-persistent storage (`D:\home\data\fitzobit.db`). The Free (F1) tier costs nothing.
+Result: Fitzobit runs at `https://<your-app-name>.azurewebsites.net`. The Free (F1) tier costs nothing.
+The database is PostgreSQL: use a free Neon database (as in [RENDER.md](RENDER.md), step 2) and give the app its connection string.
 
 > **Free-tier limits** (check Azure's current pricing page): about 60 CPU-minutes per day, 1 GB memory, 1 GB storage,
 > no "Always On". The app sleeps after about 20 minutes without visitors, so the first page after a pause takes
@@ -33,8 +33,7 @@ persistent storage (`D:\home\data\fitzobit.db`). The Free (F1) tier costs nothin
 
 | Name | Value |
 |---|---|
-| `Database__ConnectionString` | `Data Source=D:\home\data\fitzobit.db` |
-| `Database__SqliteJournalMode` | `DELETE` |
+| `Database__ConnectionString` | your Neon connection string (direct, not pooled) |
 | `Auth__AllowRemoteSetup` | `true` &nbsp; *(temporary: remove it after step 4)* |
 
 Click **Apply → Confirm**.
@@ -42,8 +41,7 @@ Click **Apply → Confirm**.
 Then **Settings → Configuration → General settings**: set **HTTPS Only** to **On**, then **Save**.
 
 Why these settings:
-- **`D:\home`** is the app's persistent storage, and putting the database outside the site folder means a redeploy never touches it.
-- **`DELETE` journal mode:** `D:\home` is network-backed, where SQLite's default WAL mode is unsafe.
+- **Neon** keeps the data outside the app, so a redeploy never touches it.
 - **HTTPS Only:** sign-in cookies are marked `Secure` in Production, so the site must be used over https.
 
 ## 3. Build and upload the app
@@ -66,7 +64,7 @@ the app and publish. Run `npm run build` in `src\Fitzobit.UI` first so the UI is
 
 ## 4. First sign-in
 
-1. Open `https://<your-app-name>.azurewebsites.net`. The first load can take about 20 seconds: it creates the database, applies migrations and loads the catalogue.
+1. Open `https://<your-app-name>.azurewebsites.net`. The first load can take about 20 seconds: it applies the database migrations.
 2. **Create the administrator** (your name, user name and password).
 3. **Close the setup door:** back in the portal, **Environment variables**, delete `Auth__AllowRemoteSetup`, then **Apply**. Setup also refuses to run once a user exists, but removing the setting is cleaner.
 4. In the app, **Settings → Users → Add user** for each Manager.
@@ -87,7 +85,7 @@ new migrations apply automatically on the next start.
 
 ## Backups
 
-Kudu **DebugConsole** → `D:\home\data` → download `fitzobit.db`. Do it regularly; the free tier has no automatic backups.
+The data is in Neon: use Neon's restore window, or `pg_dump` the database regularly.
 
 ## Troubleshooting
 

@@ -15,8 +15,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fitzobit.Web", "src\Fitzobi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fitzobit.Tests", "tests\Fitzobit.Tests\Fitzobit.Tests.csproj", "{2131AA4B-733E-481B-9A65-44A479EA73FE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fitzobit.Infrastructure.PostgreSql", "src\Fitzobit.Infrastructure.PostgreSql\Fitzobit.Infrastructure.PostgreSql.csproj", "{A8612785-4B74-4EDE-831A-A74936898C74}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,18 +85,6 @@ Global
 		{2131AA4B-733E-481B-9A65-44A479EA73FE}.Release|x64.Build.0 = Release|Any CPU
 		{2131AA4B-733E-481B-9A65-44A479EA73FE}.Release|x86.ActiveCfg = Release|Any CPU
 		{2131AA4B-733E-481B-9A65-44A479EA73FE}.Release|x86.Build.0 = Release|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Debug|x64.Build.0 = Debug|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Debug|x86.Build.0 = Debug|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Release|x64.ActiveCfg = Release|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Release|x64.Build.0 = Release|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Release|x86.ActiveCfg = Release|Any CPU
-		{A8612785-4B74-4EDE-831A-A74936898C74}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -109,6 +95,5 @@ Global
 		{E280E99D-D4AB-4697-9A56-504F8031CA44} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{3B03BC89-DE78-4646-BC89-4429FF0CC4D8} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{2131AA4B-733E-481B-9A65-44A479EA73FE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{A8612785-4B74-4EDE-831A-A74936898C74} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

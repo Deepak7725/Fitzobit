@@ -23,7 +23,7 @@ if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 dotnet publish (Join-Path $root 'src\Fitzobit.Web') -c Release -o $out
 if ($LASTEXITCODE) { throw 'dotnet publish failed' }
 
-foreach ($required in 'Fitzobit.Web.dll', 'web.config', 'wwwroot\index.html', 'Fitzobit_WhatsApp_Catalogue.xlsx') {
+foreach ($required in 'Fitzobit.Web.dll', 'web.config', 'wwwroot\index.html') {
     if (-not (Test-Path (Join-Path $out $required))) { throw "Publish output is missing $required" }
 }
 

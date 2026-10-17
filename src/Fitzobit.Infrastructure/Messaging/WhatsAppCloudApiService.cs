@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Fitzobit.Application.Abstractions;
-using Fitzobit.Application.Imports.Validation;
+using Fitzobit.Application.Customers;
 using Fitzobit.Application.Messaging;
 using Fitzobit.Domain.Messaging;
 using Microsoft.Extensions.Logging;

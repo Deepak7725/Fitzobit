@@ -1,265 +1,309 @@
-# Fitzobit Delivery Management — Handoff (continue Part 3)
+# Fitzobit Delivery Management — Handoff
 
-> **For the next chat:** read this whole file first. Parts 1, 2 and 3 are complete and verified (see §4 "Part 3 status").
-> The only open item is the user's decision on resetting the real database. The full Part 3 brief is at the end.
+> **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
+> The app was rebuilt around a **new business model** in four parts (Parts 1–3 on 2026-10-08, Part 4 on 2026-10-16; verified locally, **NOT yet
+> committed/pushed** — see §0). The user sends the next request in chat — continue from there.
+> **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
 ---
 
-## 1. Where things are
+## 0. Current state (2026-10-17, after Part 4 + follow-ups)
 
 | Item | Value |
 |---|---|
-| Project root | `E:\ClaudeWorkspace\Fitzobit` (not a git repo; the user commits — **do not run git**) |
-| Database | `E:\ClaudeWorkspace\Fitzobit\data\fitzobit.db` (SQLite, created/migrated on startup) |
-| Catalogue source | `E:\ClaudeWorkspace\Fitzobit\Fitzobit_WhatsApp_Catalogue.xlsx` (10 items, 18 tiers) |
-| App URL | `http://localhost:5080` (API + built UI). UI dev server `:5173` proxies `/api` |
-| Start | `powershell -ExecutionPolicy Bypass -File E:\ClaudeWorkspace\Fitzobit\start.ps1` (builds UI if needed) |
-| Build | `dotnet build Fitzobit.sln` · UI: `cd src\Fitzobit.UI; npm run build` (outputs to `src\Fitzobit.Web\wwwroot`) |
-| Tests | `dotnet test` (114 passing at the end of Part 2; xUnit, real SQLite in-memory via migrations) |
-| Migrations | `dotnet ef migrations add <Name> -p src\Fitzobit.Infrastructure -s src\Fitzobit.Infrastructure -o Persistence\Migrations` (local tool manifest in `.config`) |
-| Samples | `samples\Sample_Customers_Test.xlsx` (22 rows, every validation path), `samples\Sample_Customers_10000.xlsx` (load test). Fake customers only. |
-| Toolchain | .NET SDK 9 targeting **net8.0**, EF Core **8.0.11**, ClosedXML 0.104.2, React 18 + TS + Vite 5, lucide-react, @fontsource-variable/inter, Python 3 (openpyxl) for checks |
+| Project root | `E:\ClaudeWorkspace\Fitzobit` (Windows 11; shells: PowerShell + Git Bash) |
+| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`. Last pushed: `1877b1a` (old model). **Parts 1–4 of the new model are uncommitted in the working tree.** |
+| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Still runs the OLD model until the user pushes. |
+| Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
+| Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
+| Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
+| Migrations | 4: Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4). `has-pending-model-changes` = none. |
+| Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
+| Tests | **166 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
-**Stop the running app before building** (`Fitzobit.Web.exe` locks DLLs): `Get-Process Fitzobit.Web | Stop-Process -Force`.
+### 0.1 What the user still has to do
+1. **Commit + push Parts 1–4** (Render redeploys from the Dockerfile; Neon migrates on startup). Customers, groups and history are
+   kept, but by the owner's decision the old package data (meal type, frequency, dates, pauses) is **deleted** and every customer
+   shows as *Incomplete* until a package and the delivery time are entered again. Same on the local DB at its next start.
+2. After deploying: **Settings → General → Delivery area → set the service city** (Coimbatore), live and local. Locations are
+   looked up only after this (OpenStreetMap, ~1/second, in the background).
+3. Live: create the admin if not done yet (setup code = Render → Environment → `Auth__SetupCode`); then delete `Auth__SetupCode`.
+4. **Reset the Neon password** (it was visible in a screenshot in an earlier chat) and update `Database__ConnectionString` on Render.
+5. Optional: keep-awake pinger (cron-job.org → `/api/health` every 10 min, 07:00–22:00 IST); `Geocoding__Nominatim__ContactEmail` on Render.
+6. After the first deploy, try one **PDF export** on the live site (the Linux/Docker font path could not be run locally — see §5).
 
-**Current DB contents (real DB):** Part 2 test data — 16 customers `TST001…TST022`, groups *Kumbakonam-Trichy Route*, *Thanjavur North*, *Thanjavur South*, 4 import batches (#1 cancelled, #2 completed, #3 cancelled, #4 cancelled), 5 plan aliases. No users yet (auth is new in Part 3). The user has not decided whether to reset it; spec says "no fake production data" → **ask the user** before deleting; offer reset (delete `data\fitzobit.db*`, restart).
+### 0.1b Follow-ups done after Part 4 (2026-10-16/17)
+- Test data added to the owner's local DB through the app's own API from his signed-in Chrome tab (Claude in Chrome, a new tab,
+  `fetch` with header `X-XSRF-TOKEN` from cookie `XSRF-TOKEN`): random packages, delivery times and notes (see Database row).
+- **Dialog fix:** the Change password dialog (opened from the user menu in the top bar) was cut off — the top bar has
+  `backdrop-filter`, which makes `position: fixed` children relative to the bar. `Modal` in `components/feedback.tsx` now renders
+  through `createPortal(…, document.body)`; z-order unchanged (modal 90 > drawer 85, toasts 100). UI type-checks and builds.
+- Possible next items (not requested yet): a "forgot password"/admin reset for the only admin; a script or action to add
+  packages to existing customers.
 
----
-
-## 2. Architecture (modular monolith)
-
-```
-src/Fitzobit.Domain          entities + pure rules (no EF/provider deps)
-src/Fitzobit.Application     use cases; talks to DB only via IFitzobitDbContext (EF Core + EF Relational, provider-neutral)
-src/Fitzobit.Infrastructure  FitzobitDbContext, configurations, migrations, provider switch, Excel I/O (ClosedXML),
-                             password hashing, WhatsApp Cloud API client, SQLite connection tuning
-src/Fitzobit.Web             ASP.NET Core host, thin controllers, auth/CSRF/security headers, serves wwwroot
-src/Fitzobit.UI              React + TS (Vite)
-tests/Fitzobit.Tests         xUnit (references Application, Infrastructure, Domain, and now Web for integration tests)
-```
-
-Key conventions:
-- Provider choice only in `Infrastructure/Persistence/DatabaseOptions.cs` (`DatabaseProviderConfigurator`). PostgreSQL case throws NotSupported (reserved). SQLite-only tuning (`SqliteConnectionTuning`: WAL, synchronous=NORMAL, 64 MB cache, FK on) is added there.
-- The only provider-aware model line: filtered unique index `UX_CustomerDeliveryGroupAssignments_ActiveCustomer` (one active group per customer) in `FitzobitDbContext.OnModelCreating`.
-- Enums stored as strings; money `decimal(12,2)`; all DateTimes UTC (converter in DbContext).
-- `SaveChanges` stamps CreatedAt/UpdatedAt and CreatedBy/UpdatedBy from `ICurrentUser`.
-- Business errors: throw `BusinessRuleException` (→ 409 with message) / `NotFoundException` (→ 404). Web `ApiExceptionHandler` maps them; unexpected → 500 generic message + reference id, logged.
-- Audit: `IAuditLogger.Record(...)` and (new) `RecordChange(action, type, key, summary, oldValues, newValues, details)`; `ChangeSet.Track(field, old, new)` helper. Audit rows are written in the same SaveChanges as the change.
-- Code style: match existing (primary constructors, records for DTOs, XML doc summaries on classes, minimal comments).
-- User preferences (from memory): edits only, no git; deliver test cases as .xlsx outside the repo if asked; keep changes minimal and verified.
-
----
-
-## 3. Parts 1 & 2 — done and verified
-
-**Part 1:** schema, catalogue seeding from the workbook (idempotent, preserves source prices), price warnings
-(`CatalogueWarningEvaluator`: PRICE_MISMATCH for Medium monthly ₹699 vs ₹2,699/₹2,899; PERIOD_PRICE_CONFLICT for salads weekly=monthly ₹2,299),
-plans (one per catalogue item), dashboard, catalogue screen, navy-sidebar UI.
-
-**Part 2:** Excel template (`GET /api/imports/template`), secure upload (.xlsx only, 10 MB, zip inspection, no macros, formulas not evaluated),
-validation (CustomerID missing/duplicate/existing, name, Indian phone, location + pincode via `ILocationClassificationService`, plan mapping via
-`PlanMatcher` — saved alias → exact name/code → keywords; ambiguous never auto-chosen; manual choices saved as `PlanAlias`),
-7-step wizard (Upload, Validate, Classify, Create Groups, Assign Customers, Review, Save), draft groups, assignment (individual/bulk/by
-pincode/area/city with preview+confirm), rule-based suggestions (existing assignment → pincode → location → area → city; only unique evidence),
-transactional Confirm & Save with rollback, existing customers never overwritten (only group may change; "keep current group" counted separately),
-Delivery Groups page (add/rename/deactivate/delete/view customers/bulk move with reason), Import History list.
-Performance (10k rows): upload+validate ≈3 s, save ≈3 s, list/filter/assign < 0.1 s. Indexes added in migration `AssignmentLookupIndexes`.
-
-Migrations so far: `InitialCreate`, `Part2CustomerImport`, `AssignmentLookupIndexes` (all applied to the real DB).
+### 0.2 User preferences
+- Edits only; the user commits/pushes. Keep changes minimal, incremental and **verified** (build + tests + browser check for UI).
+- **Free** hosting/services only unless he asks. Never hard-code credentials; env vars / user secrets.
+- Explain simply; click-by-click steps for anything he must do (he sends screenshots).
+- **Ask, don't assume:** when a request is ambiguous, ask with options (he answered multi-question option lists well) and show the
+  plan for confirmation before big changes; do not add rules/limits he did not ask for (or name them explicitly).
+- He prefers that Claude does routine data entry for him in his signed-in Chrome (local app only) instead of typing it himself.
+- He thinks visually. Delivery grouping = customers as points by longitude/latitude, split into natural areas like a
+  matplotlib K-Means plot (not a fixed 3–4 clusters). **Part 3 clarification:** in Coimbatore, *RS Puram + Gandhipuram +
+  Avinashi Road* and nearby form one group, *Sundarapuram + Kurichi + Eachanari* another — he wants to **see the area names**
+  of each group. Implemented (§1, Part 3).
 
 ---
 
-## 4. Part 3 — progress so far (this chat)
+## 1. The business model now
 
-### Written and compiling (not yet tested, no migration yet)
-Packages added: `Microsoft.Extensions.Identity.Core 8.0.11` + `Microsoft.Extensions.Http 8.0.1` (Infrastructure),
-`Microsoft.AspNetCore.Mvc.Testing 8.0.11` + project ref to Web (tests).
+Fitzobit delivers meals in **one city**, Monday–Saturday (**Sundays are never delivery days**). The old Excel import,
+catalogue and plans are gone. Customers are entered in the app, located on a map, and split into **numbered delivery groups**.
 
-- **Domain**
-  - `Domain/Users/AppUser.cs` — UserName (lower-case, unique), DisplayName, Role (`UserRole` Admin|Manager), PasswordHash, IsActive, SecurityStamp (rotated on password/role/active change), FailedLoginCount, LockoutEndsAt, LastLoginAt. `Roles` constants.
-  - `Domain/Messaging/WhatsAppMessage.cs` — message history (purpose, status Sent/Delivered/Read/Failed, provider id, timestamps). Only written when the API actually answered.
-  - `Domain/Auditing/AuditLog.cs` — added `OldValues`, `NewValues` (JSON) + new action names (CustomerUnassigned, PlanUpdated, PlanAliasDeleted, User*, ExportPerformed…).
-- **Application**
-  - `Abstractions.cs` — `IFitzobitDbContext` now has `Users`, `WhatsAppMessages`.
-  - `Auditing/AuditLogger.cs` — `RecordChange` + `ChangeSet`.
-  - `Users/UserServices.cs` — `IPasswordHashing`, `PasswordPolicy` (≥10 chars, letters+digits, not containing user name), `AuthService` (SignInAsync with 5-attempt/15-min lockout and generic errors, first-run `CreateFirstAdminAsync` only when no users, `ValidateSessionAsync` by security stamp), `UserService` (list/create/update role+active/reset password/change own password; cannot demote/deactivate last active admin or yourself).
-  - `Customers/CustomerQueryService.cs` — composable `CustomerRow` projection (plan name + current group via indexed per-row subqueries), `CustomerFilter` (Search across ID/name/phone/location/pincode/plan/group; Group id or "none"; PlanId; exact Pincode; Location contains; Status Active|Inactive|Unassigned; ImportBatchId; Sort customerId|customerName|location|pincode|plan|group|createdAt|updatedAt; Desc), page sizes 10/25/50/100, `GetDetailAsync` (current group, assignment date, history, import batch, last 50 audit entries).
-  - `Customers/CustomerCommandService.cs` — `UpdateAsync` (CustomerID immutable; validates name/phone/location/plan/tier/status; optimistic concurrency via `ExpectedUpdatedAt`; re-classifies location; audit with old/new values; warnings for landline/duplicate phone/no pincode).
-  - `Customers/CustomerExportService.cs` — `ExportScope` All|Filtered|Selected; filtered uses the exact same `ApplyFilter` + `ApplySort`; `ExportOptions` (MaxRows 100k, TimeZone Asia/Kolkata); audit ExportPerformed with filters.
-  - `DeliveryGroups/DeliveryGroupAssignmentService.cs` — added `UnassignManyAsync` (history with NewGroupId null + audit).
-  - `Messaging/WhatsApp.cs` — `WhatsAppOptions` (token only via env `WhatsApp__AccessToken`/user-secrets; `IsConfigured`), `IWhatsAppService`, `WhatsAppTemplateMessage`, `WhatsAppStatusService` ("WhatsApp integration not configured").
-  - `Administration/AdminServices.cs` — `PlanAdminService` (activate/deactivate plan, list/delete plan aliases, audited), `AuditQueryService` (paged audit log + distinct actions).
-  - `Dashboard/DashboardService.cs` — adds `CustomersByGroup` (+ "No group"), `CustomersByPlan`, `CustomersByPincode`, `CustomersByCity`; TotalDeliveryGroups counts active groups.
-  - `DependencyInjection.cs` — registers all of the above.
-- **Infrastructure**
-  - `FitzobitDbContext` — DbSets `Users`, `WhatsAppMessages`; enum conversions.
-  - `Configurations/EntityConfigurations.cs` — `AppUserConfiguration` (table `Users`, unique UserName), `WhatsAppMessageConfiguration`, AuditLog index on Action.
-  - `Identity/IdentityPasswordHashing.cs` (PBKDF2 via `PasswordHasher<AppUser>`). **Deleted** `Identity/ConfiguredCurrentUser.cs` (config user replaced by real sign-in).
-  - `Exports/CustomerExcelWriter.cs` — formatted export (navy header, autofilter, frozen row, widths, CustomerID/Phone/Pincode as text, real dates `dd-mmm-yyyy hh:mm` in IST, "Export info" sheet).
-  - `Messaging/WhatsAppCloudApiService.cs` — official Cloud API (`POST {base}/{version}/{phoneNumberId}/messages`, template); not configured → returns error, writes nothing.
-  - `DependencyInjection.cs` — options for Import/Export/WhatsApp; registers hashing, writer, typed HttpClient for WhatsApp. **ICurrentUser is now registered by the Web host.**
-- **Web**
-  - `Infrastructure/Security.cs` — `Policies.Operate` (Admin or Manager), `Policies.Admin`; `FitzobitClaims.For(user)` + `UserId()`; `HttpContextCurrentUser` ("system" at startup, "anonymous" when not signed in); `SecurityHeadersMiddleware` (CSP, nosniff, DENY framing, no-referrer, permissions-policy, `Cache-Control: no-store` on /api).
-  - `Infrastructure/ApiExceptionHandler.cs` — safe errors (404/409/413/500 generic with reference id; never stack traces).
-  - `Program.cs` — cookie auth (`fitzobit.auth`, HttpOnly, SameSite=Strict, Secure in non-dev or `Auth:RequireHttpsCookies`, 10 h sliding, 401/403 instead of redirects, `OnValidatePrincipal` re-checks security stamp); authorization policies with **fallback = authenticated**; antiforgery (`X-XSRF-TOKEN` header, `AutoValidateAntiforgeryToken` global filter); rate limiter policy `"auth"` (10/min/IP); HSTS outside dev; Swagger only in dev; SPA fallback + `/api/*` 404 are `.AllowAnonymous()`.
+### Part 1 (done) — new customer model, PostgreSQL, dropdowns, delivery dates, pauses
+- Removed Import / Import History / Catalogue / Plans everywhere; SQLite removed. Old data preserved (see migrations).
+- **Customer:** `CustomerId` (generated `FITZ-000001…` from PostgreSQL sequence `CustomerNumberSequence`; existing ids kept,
+  generated numbers skip ids already taken), CustomerName, PhoneNumber (+Normalized), Address (+Normalized), Pincode,
+  Locality/City (derived from address), PreferenceId/MealTypeId/FrequencyId/StatusId → `DictionaryEntries`, StartDate/EndDate
+  (`date`), PausedCount (0–3, DB check), Latitude/Longitude (numeric 9,6), geocode fields, LegacyPlan, Created/Updated At/By, `xmin`.
+- **DictionaryEntries** (type, stable Code, DisplayName, SortOrder, IsActive, IsSystem, NumericValue): Preference (Veg, With Egg,
+  None), MealType (Regular, Medium, Large, Meal bowl, Oats), Frequency (Monthly=26, Weekly=6 delivery days — **seed values only**,
+  read from `NumericValue` everywhere), CustomerStatus (Active/Inactive/Paused = system: renamable, not deactivatable).
+  **Settings → Dropdown values** (Admin) has tabs Preferences / Meal Types / Frequencies / Customer Status: view, add, rename,
+  delivery days (frequencies), reorder (↑/↓), activate/deactivate, delete only if unused. The UI never hard-codes dropdowns
+  (`useDictionaries()` → `GET /api/dictionaries`, active values only; the server refuses inactive values for new choices).
+- **Delivery dates:** one authoritative implementation, `IDeliveryCalendarService` (`Fitzobit.Domain/Deliveries`):
+  IsDeliveryDay, NextDeliveryDay, CountDeliveryDays, CalculateEndDate(start, days, skipped), ExtendEndDateForPause.
+  `DeliveryScheduleService.DeliveryDays(frequency)` reads `NumericValue`. Start date must be Mon–Sat. End date always
+  server-calculated (`GET /api/customers/schedule`); changing start/frequency on edit requires `ConfirmScheduleChange`.
+- **Pauses** (`CustomerPauseService`, table `CustomerPauses`): see §1 Part 3 for the complete rules.
 
-### Done in chat 2 (steps 1–3 below are COMPLETE)
-- Controllers: `AuthController` (state/setup/login/logout/change-password; issues `XSRF-TOKEN` cookie), `CustomersController`
-  (list, filter-options, detail, PUT, group/preview, group, export → file + `X-Export-Rows` header), `AdminControllers.cs`
-  (`UsersController`, `AuditController`, `SettingsController` [Operate; `GET api/settings`, `GET api/settings/whatsapp`],
-  `CatalogueAdminController` [Admin; plan status, plan-aliases, resync]). Existing controllers now `[Authorize]` (System → Admin).
-- Service additions: `UserService.ChangeOwnPasswordAsync` returns the user (session re-issued); `DeliveryGroupService.PreviewUnassignAsync`;
-  `CustomerQueryService.GetFilterOptionsAsync`.
-- **Bug fixed:** `AutoValidateAntiforgeryTokenAttribute` needs Razor view services (500 on every request) → replaced by
-  `ApiAntiforgeryFilter` (Web/Infrastructure/Security.cs): unsafe methods need `X-XSRF-TOKEN`, else 400 problem.
-- appsettings: `CurrentUser` removed; `Export`, `Auth` (SessionHours, AllowRemoteSetup=false), `WhatsApp` (no token) added.
-- Migration `Part3AuthAuditMessaging` created and applied to the real DB (backup of the pre-migration DB was taken in the chat-2 scratchpad).
-- Tests: 133 passing. New `CustomerViewDataTests` (9) and `Web/WebSecurityTests` (10, via `Web/WebTestHost` = real host, Production env,
-  https base address, temp SQLite file, test-only throwing controller).
+### Part 2 (done) — numbered groups, geocoding, delivery map / classification
+- **Groups:** `DeliveryGroups.GroupNumber` (unique, > 0), notes in Description. Create N groups at once (advisory lock), deactivate
+  when empty, delete if never used. One active group per customer (filtered unique index). Every assign/move/remove →
+  `CustomerDeliveryGroupAssignmentHistory` (prev, new, who, when, reason) + audit.
+- **Geocoding:** `IGeocodingService` with `NominatimGeocodingService` (OpenStreetMap, default, free, ≤1 req/s), `GoogleGeocodingService`
+  (`Geocoding__Google__ApiKey`), `DisabledGeocodingService` (`Provider=None`). `CustomerGeocodingService`: address → locality →
+  pincode area (approximate); rejects city-only and out-of-area matches; never invents coordinates. Service city in `AppSettings`.
+  `GeocodingWorker` (BackgroundService) processes Pending customers; retries 1m, 5m, 30m, 2h… up to 5 then Failed.
+- **Classification map** (`/map`, `DeliveryMapPage` + canvas `ClusterPlot`): X = longitude, Y = latitude, coloured by group, red
+  star per group centre, hulls, labels, zoom/pan, hover, box select, search, legend, unlocated list. Modes *Current groups* and
+  *Suggest groups* (deterministic K-Means, Auto count, Balance, pincode placement) → draft → evaluate → save in one transaction.
 
-- **Frontend (step 4) written, `npm run build` passes (not yet browser-tested):** `api.ts` (CSRF header from `XSRF-TOKEN` cookie,
-  one retry after refreshing the token, 401 → `fitzobit:unauthorized` event, `download()` for export), `auth.tsx` (AuthProvider gate:
-  setup / login / app), `components/UserMenu.tsx`, `ChangeGroupDialog.tsx`, `CustomerDrawer.tsx`, `BarChart.tsx`;
-  pages `ViewDataPage` (URL-synced filters), `ImportDetailPage` (`/imports/:id`), Dashboard charts, Delivery Groups distribution,
-  `SettingsPage` + `settings/UsersTab|PlansTab|AuditTab`. NextPhaseNotice removed.
-- Shell gotcha: the Bash tool breaks on `''` inside heredocs — put such edits in a scratchpad .py file.
+### Part 3 (done 2026-10-08) — exports, settings, pause rules, dashboard, classification areas, polish
+- **Exports (Excel + PDF)** — `CustomerExportService` (Application), writers in `Fitzobit.Infrastructure/Exports`:
+  - Request `POST /api/customers/export` = `CustomerExportRequest { Scope: Filtered|Page|Selected|All, Format: Excel|Pdf,
+    Filter, Ids, Columns, Page, PageSize }`. Rows are chosen **on the server** with `CustomerQueryService.ApplyFilter/ApplySort`
+    (+ Skip/Take for Page) — never from the browser's loaded rows. Columns = keys from `CustomerExportColumns.All` (18 columns,
+    same keys as the table); empty = all columns; unknown/duplicate keys → 409. Both formats get identical rows and columns.
+  - UI: **Export** button / *Export selected* → `ExportDialog` (in `ViewDataPage.tsx`): Format, Rows (Filtered / This page /
+    Selected / All ignoring filters), Columns (**Visible columns** default = table's visible columns in order, or All columns).
+    Last format remembered in localStorage.
+  - Excel (`CustomerExcelWriter`, ClosedXML): only chosen columns, header style, autofilter, frozen row, widths, text format `@`
+    for ID/phone/pincode, real dates `dd mmm yyyy`, coordinates `0.000000`, separate *Export info* sheet (filters, columns, user, time).
+  - PDF (`CustomerPdfWriter`, **PDFsharp-MigraDoc 6.2.4**, MIT): A4, heading (scope, count, columns, filters, generated by/at),
+    header row repeated on each page (`HeadingFormat`), striped rows, footer "Generated … · Page X of Y". Widths measured with
+    XGraphics; portrait unless needed; font 9 → 8 → 7.2 → 6.5 pt; names/addresses wrap, IDs/dates never break (NBSP).
+    Fonts: `PdfFonts` resolver — Arial/Segoe UI (Windows), Liberation/DejaVu (Linux; Dockerfile installs `fonts-liberation`),
+    else **embedded Segoe WP from PDFsharp** (`PdfSharp.WPFonts`), so it never fails for lack of a font.
+  - Limits: `Export:MaxRows` 100,000 (Excel), `Export:PdfMaxRows` 2,000 (2,000 rows × 18 columns ≈ 2 s locally; 5,000 took 9 s).
+  - Audit `ExportPerformed` with format, scope, rows, columns, filters. Example files: `samples/exports/`.
+- **Columns:** any column can be hidden (at least one stays visible; Customer ID no longer forced). *Reset columns* = standard set
+  (`DEFAULT_HIDDEN`), *Show all columns*. Table labels = export headers (Customer ID, Customer Name, Phone Number, Group Number…).
+- **Pause rules completed:** only status **Active** may pause (Inactive/Paused → 409 with a clear message; the drawer's Pause button
+  is disabled with the reason). Max 3, not Sunday, today or later, inside the package, not twice the same day. Single SaveChanges
+  (= one transaction) + `xmin` row version + unique (CustomerId, PausedDate) + check 0–3 → no double counting. When start date or
+  frequency changes, `PausedCount` = pauses inside the new period (renewal → 0; > 3 refused).
+- **Status:** always by stable dictionary code (`CustomerStatusCodes` ACTIVE/INACTIVE/PAUSED), names from the dictionary —
+  used in list/filters/details/dashboard/classification scope/exports. No competing enum.
+- **Dashboard** (`DashboardService`, `DashboardPage`): Total / Active / Paused / Inactive, Delivery Groups, Unassigned (+ how many
+  active), With / Without coordinates (approximate noted), one card per frequency (Weekly/Monthly…), Packages ending ≤ 7 days;
+  charts by group, meal type or status, pincode or city; **Recent customer changes** (last 8 customer audit events). Cards link
+  to filtered customer lists. No Catalogue/Import metrics remain.
+- **Navigation:** Dashboard · Customers (`/data`) · Add Customer · **Delivery Classification** (`/map`) · Delivery Groups · Settings.
+  No Import / Import History / Catalogue / Plans links, routes or APIs (`/import` → Not found; `/api/imports|catalogue|plans` → 404).
+- **Delivery Classification areas (user's request):** `MapGroupDto.Areas` (top localities with counts; locality from address, else
+  "PIN …"; "RS Puram"/"R.S. Puram" merged) and `MapPointDto.Area`. Map draws a tag above each centre star:
+  *Group 2 / RS Puram · Gandhipuram · Saibaba Colony*; legend "Groups and their areas"; summary chips: groups, on the map,
+  **without coordinates**, **unassigned**.
+- **Auto group count fixed:** silhouette is now judged on **distinct locations** and the **fewest groups within 0.05 of the best**
+  win (`GeoClustering.ChooseGroupCount`, `SilhouetteTolerance`). Before, locality-level geocoding (many customers on one point)
+  made "one group per locality" look perfect (22 test customers → 8 groups); now → 3 natural areas.
+- **Security fix:** `Logging:LogLevel:System.Net.Http.HttpClient = Warning` — .NET 8 logs outgoing request URLs at Information,
+  which would have written the Google API key and customer addresses into the Render logs.
+- **UX polish:** export dialog with busy/disabled states and inline errors; phone layout (header buttons wrap — the Customers page
+  scrolled sideways before; dashboard cards 2 per row); recent-change texts; settings Export tab rewritten.
 
-### Part 3 status: COMPLETE (chat 2) — steps 1–6 done, final report given to the user
-- Step 5 README rewritten per spec §34. Step 6 verified: backend build 0 warnings, `npm run build` (tsc) OK, `dotnet test` 133/133,
-  migration applied to the real DB, browser E2E against a scratch instance (accounts in git-ignored `samples/e2e-accounts.local.json`),
-  DB verified with Python sqlite3, console/server logs checked.
-- Fixes made during E2E: sign-in/setup audit attributed to the user (`IAuditLogger.RecordAs`), first admin gets LastLoginAt,
-  export file name in export time zone, DB size includes `-wal`, `ExceptionHandlerMiddleware` log category set to None
-  (ApiExceptionHandler logs real 500s), **import performance**: `ImportBatch.Rows` and `DeliveryGroup.Assignments` are HashSets,
-  upload inserts the batch first then rows by FK inside one transaction, commit reads rows AsNoTracking
-  (10k rows: upload 13 s → 2.6 s, save 19 s → 1.6 s).
-- New sample: `samples/Sample_Customers_E2E_Coimbatore.xlsx` (32 fake rows incl. warning/error cases).
-- **Open question for the user:** the real DB still holds the Part 2 test data (16 TST customers, 3 groups, 4 batches) and has
-  no users yet. Offer reset (stop app, delete `dataitzobit.db*`, restart → first-run admin setup).
+### Part 4 (done 2026-10-16) — notes, preferred delivery time, several packages per customer
+Decisions asked from the owner (do not change without asking): dated note history; exact delivery time per customer, required;
+several packages running at the same time; package fields = preference, meal type, quantity, frequency, start date (+ calculated
+end date) — no status per package; a pause applies to **all packages running that day** and is **blocked** if one has used its
+3 pauses; packages can be edited and deleted (delete only before the first delivery day); notes: writer edits/deletes own, Admin
+any; Customers table and exports **one row per customer** with a package summary; dashboard meal-type/frequency charts count
+**packages**; Add Customer needs **at least one** package and can take a first note; existing data: **start fresh** (not converted).
+- Domain: `CustomerPackage` (Quantity 1–20, PausedCount 0–3, `xmin`), `PackagePause` (unique package+date, cascade with its
+  package), `CustomerNote` (≤ 2,000 chars, CreatedBy = user name); `Customer.PreferredDeliveryTime` (`time`). Removed from Customer:
+  PreferenceId, MealTypeId, FrequencyId, StartDate, EndDate, PausedCount, Pauses (table `CustomerPauses` dropped).
+- Application: `CustomerCommandService` (create with packages + note; update = customer fields only), `CustomerPackageService`
+  (add/update/delete), `CustomerNoteService` (add/update/delete + `CanEdit`), `CustomerPauseService` (all running packages),
+  `CustomerQueryService` (row aggregates: package count, earliest start, latest end; package filters = "any package"; packages
+  loaded per page via `PackageSummariesAsync`), exports (columns `deliveryTime`, `packages`; Excel time cells), dashboard,
+  group statistics and map tooltip use the packages; dictionary "in use" counts packages (customers for status).
+- API: `POST /api/customers` (packages[], note, preferredDeliveryTime "HH:mm:ss"), `POST /api/customers/{id}/packages`,
+  `PUT|DELETE /api/customers/packages/{id}`, `POST /api/customers/{id}/notes`, `PUT|DELETE /api/customers/notes/{id}`,
+  `POST /api/customers/{id}/pauses` (no ExpectedUpdatedAt any more).
+- UI: `CustomerForm.tsx` (`CustomerFormFields` with delivery time, `PackageFields`), `AddCustomerPage` (packages list + note),
+  `CustomerDrawer` (package cards, `PackageDialog`, `NotesSection`, pause preview), Customers table columns Delivery Time and
+  Packages (localStorage key bumped to `…hiddenColumns.v4`), dashboard wording, Settings "In use" column.
+- Chosen by Claude, mentioned to the owner (change if asked): quantity range 1–20.
+- Verified in the browser on scratch DB `fitzobit_pk` (dropped): Add Customer with 2 packages + first note → FITZ-000001, end
+  dates Tue 17 Nov (Monthly from Mon 19 Oct) and Mon 26 Oct (Weekly ×2 from Tue 20 Oct); table shows 7:30 AM and both packages;
+  pausing Tue 20 Oct paused both (→ 18 Nov / 27 Oct, 1 of 3 each); note add → edit ("edited … by") → delete; package quantity
+  edit; delete of a not-yet-started package; edit without delivery time refused; dashboard counts; PDF export with the new
+  columns; phone width without horizontal scroll; no console errors.
 
-### After Part 3 (chat 2, continued)
-- Azure App Service F1 deployment prepared: `deploy/AZURE.md` (portal steps), `deploy/publish-azure.ps1` → `artifacts/fitzobit-azure.zip`
-  (git-ignored). New option `Database:SqliteJournalMode` (WAL default; DELETE on Azure's network storage). Catalogue workbook is
-  copied into the publish output. Package smoke-tested from a folder without the .sln (Production, DELETE mode). Tests: 136.
-- When Visual Studio/IIS Express is running the app, build/test with `--artifacts-path artifacts	estbuild` (inside the repo,
-  so tests can still find Fitzobit.sln).
-
-- **Hosting chosen: Tailscale Funnel from the user's PC** (needs free, no card). `deploy/TAILSCALE.md`, `deploy/local-server.ps1`
-  (publishes to `artifacts/local-server`, runs Production on http://localhost:5180, `Auth__RequireHttpsCookies=false` so cookies are
-  Secure on HTTPS requests only, working dir = app folder, logs `data/logs/server.log`), `deploy/install-autostart.ps1` (Task Scheduler
-  "Fitzobit Server" at logon). App changes: `UseForwardedHeaders` (XFF + proto, loopback proxies only); first-run setup refused when any
-  proxy header is present; antiforgery cookie SecurePolicy = SameAsRequest (Always made plain-HTTP requests 500 in Production). Tests: 141.
-  The real DB already has the user's admin account (created via Visual Studio/IIS Express).
-
-- **Final hosting choice: Render (free, Docker) + Neon (free PostgreSQL).** `Dockerfile`, `.dockerignore`, `render.yaml`,
-  `deploy/RENDER.md`. PostgreSQL support: Npgsql 8.0.11 in Infrastructure; migrations in new project
-  `src/Fitzobit.Infrastructure.PostgreSql` (`InitialPostgreSql`; add every future migration to BOTH sets); `postgresql://` URLs
-  accepted (`DatabaseProviderConfigurator.ToNpgsqlConnectionString`). Data-protection keys stored in DB (`DataProtectionKeys`
-  table, SQLite migration `DataProtectionKeys`). `ForwardedHeaders:TrustAllProxies`, `Auth:SetupCode` (remote first-run with a
-  code; Render generates it), `/api/health` (no DB). Empty values sort last on both providers. Tests: 145, all pass on SQLite and on
-  PostgreSQL (`FITZOBIT_TEST_PG`, local PG 18 on this PC). Docker build itself not tested locally (no Docker installed).
-  PostgreSQL import cost ~0.6 ms/row inside EF (10k rows ≈ 15 s locally; slower on Render's 0.1 CPU).
-
-### Useful facts / gotchas
-- `curl` writes `/tmp/...` that Windows Python can't read — use the session scratchpad path for temp files.
-- EF + SQLite: avoid correlated `Any(...)` over large tables without a usable index; `EXPLAIN QUERY PLAN` via Python `sqlite3` helped. Nested collection projections with conditionals can need SQL APPLY (not supported by SQLite) — use joins.
-- React selects/inputs can be driven in browser tests via native value setter + `dispatchEvent(new Event('change'|'input', {bubbles:true}))`; file upload via `DataTransfer`.
-- Screenshot in the built-in browser sometimes times out — retry, or use `get_page_text` / JS.
-- `start.ps1` builds the UI only if `wwwroot/index.html` is missing; use `-RebuildUI` after UI changes or run `npm run build`.
-
----
-
-## 5. Full Part 3 brief (from the user)
-
-```
-FITZOBIT DELIVERY MANAGEMENT
-PART 3 — VIEW DATA, FILTERING, EXPORT, SECURITY & FINAL PRODUCTION POLISH
-Continue from Parts 1 and 2. Do NOT rebuild working functionality.
-Work in E:\ClaudeWorkspace\Fitzobit. Actually run and verify the application. Do not modify unrelated projects.
-
-2. VIEW DATA MODULE — "View & Manage Data" enterprise table. Columns: CustomerID, CustomerName, PhoneNumber, Location,
-   Pincode, Plan, Delivery Group, Status, Created Date, Updated Date, Actions.
-3. GLOBAL SEARCH — CustomerID, CustomerName, Phone, Location, Pincode, Plan, Delivery Group. Fast; server-side.
-4. FILTERS — Group (All/Specific), Plan (All/Specific), Pincode (exact), Location (search), Status (Active/Inactive/
-   Unassigned), Import Batch (specific). All filters work together.
-5. SORTING — CustomerID, CustomerName, Location, Pincode, Plan, Group, Created Date, Updated Date; asc/desc; server-side.
-6. PAGINATION — 10/25/50/100 rows/page; "Showing 1–25 of 2,500 customers"; never load all customers into the browser.
-7. TABLE UX — column visibility, reset columns, row selection, sticky header, clear filters, filter summary, responsive
-   horizontal scrolling. Keep default interface clean.
-8. CUSTOMER DETAILS — Customer (CustomerID, Name, Phone, Location, Pincode, Plan), Delivery (Current Group, Assignment
-   Date, Assignment History), Import (Import Batch, Created, Updated). Actions: Edit, Change Group, View History.
-9. EDIT CUSTOMER — authorized users; validate; record audit; do not silently overwrite important fields.
-10. EXPORT TO EXCEL — Export All / Filtered / Selected. CRITICAL: export must respect active filters (e.g. Group Coimbatore
-    North + Plan Medium Fit Box + Pincode 641002 → only matching records).
-11. EXPORT FORMAT — CustomerID, CustomerName, PhoneNumber, Location, Pincode, Plan, DeliveryGroup, Status, CreatedAt,
-    UpdatedAt; header formatting, autofilter, frozen header, column widths, phone & pincode as text, correct dates,
-    no scientific notation.
-12. IMPORT HISTORY — File Name, Uploaded Date, Uploaded By, Total Rows, Valid, Warnings, Errors, Imported, Status.
-    Open an import: Summary, Records, Errors, Warnings.
-13. DELIVERY GROUP MODULE — Total Groups, Assigned Customers, Unassigned Customers, Group distribution. Each group: Name,
-    Description, Customer Count, Pincodes, Locations, Plans, Status, Actions.
-14. DASHBOARD — real SQLite queries. Cards: Total Customers, Total Delivery Groups, Unassigned Customers, Unique
-    Locations, Unique Pincodes, Active Plans, Recent Imports, Catalogue Items. Charts: Customers by Delivery Group,
-    Customers by Plan, Customers by Location/Pincode, Recent Imports. No meaningless charts.
-15. CATALOGUE / PLANS — from Fitzobit_WhatsApp_Catalogue.xlsx: item, category, display price, pricing tiers, billing
-    period, meal count, description, availability, warning.
-16. CATALOGUE PRICE WARNINGS — preserve and display inconsistencies (Medium monthly ₹699 vs Veg ₹2,699 / Egg ₹2,899;
-    salads weekly vs monthly). Do NOT silently correct.
-17. AUTHENTICATION — Roles: Admin (everything); Manager (upload, customers, groups, export, view, catalogue).
-    Backend authorization mandatory (not only hidden buttons).
-18. SECURITY — secure uploads, size limits, file validation, input validation, authorization, secure configuration,
-    CSRF where applicable, secure headers, safe error handling, SQL injection protection via EF Core, no exposed secrets.
-    Never expose passwords, connection strings, tokens, stack traces.
-19. SQLITE — keep SQLite (data\fitzobit.db); no PostgreSQL now; keep provider switchable; no SQLite-specific business
-    logic in the domain.
-20. FUTURE POSTGRESQL — document SQLite → PostgreSQL migration in README; do not perform it.
-21. WHATSAPP ARCHITECTURE — official WhatsApp Business API abstraction (IWhatsAppService). Do NOT scrape/automate
-    WhatsApp Web, store WhatsApp passwords, hard-code tokens, or pretend a message was sent. If not configured show
-    "WhatsApp integration not configured". App works normally without WhatsApp.
-22. FUTURE WHATSAPP FEATURES — architecture allows customer notifications, delivery/plan/subscription reminders,
-    delivery-group notifications, message templates, message history, delivery status, read status. No fake messaging.
-23. SETTINGS — General, Users, Plans, Catalogue, Delivery Groups, WhatsApp, Import Settings, Export Settings.
-    Protect administrative settings.
-24. AUDIT — who, what, when, old value, new value, relevant entity for important changes.
-25. UI POLISH — match the attached reference image's visual language (navy sidebar, blue primary, light workspace,
-    rounded cards): premium, modern, professional, fast, clean, operational. Improve spacing, typography, tables,
-    responsive behaviour, empty states.
-26. LOADING STATES — uploading, validating, classifying, saving, loading customers, exporting, loading groups, loading history.
-27. EMPTY STATES — "No customers yet" / "Upload your first Fitzobit customer Excel file to begin."; "No delivery groups
-    created" / "Create a group to organize deliveries."; "No customers match your current filters."
-28. ERROR HANDLING — never expose internals; useful user messages; technical details to logs.
-29. PERFORMANCE — server-side pagination/filtering/sorting, efficient EF queries, indexes, no N+1, efficient Excel
-    import/export; test with realistic volumes.
-30. TESTING — unit: validation, classification, pincode extraction, plan mapping, group assignment, price warnings,
-    export, authorization. Integration: SQLite persistence, import, assignment, customer updates, export. End-to-end:
-    upload, validate, classify, create group, assign, save, search, filter, sort, export.
-31. FINAL E2E (actually perform): start app; verify SQLite DB; login; dashboard; download template; create sample Excel;
-    upload; validate; review classification; create 2–3 groups; assign; review; confirm; save; verify data in SQLite;
-    open View Data; search; filter by group; filter by pincode; filter by plan; sort; open customer; edit customer;
-    reassign group; verify assignment history; export filtered records; open exported Excel; verify Import History;
-    verify dashboard statistics. Fix problems found. Do not claim it works without testing.
-32. DATABASE VERIFICATION — tables, relationships, constraints, indexes, customers, groups, assignments, history,
-    import batches, audit logs, catalogue.
-33. BUILD VERIFICATION — backend build, frontend build, tests, lint where applicable, migration verification; check
-    browser console, server logs, runtime errors; fix obvious issues.
-34. README — overview, architecture, requirements, SQLite setup, DB location, EF migrations, running, Excel template,
-    import workflow, delivery groups, View Data, filtering, export, authentication, WhatsApp architecture, future
-    PostgreSQL migration, testing, deployment, troubleshooting.
-35. DEFINITION OF DONE — real app (not mockup/fake): real SQLite persistence, Excel upload, validation, classification,
-    customers, groups, assignments, history, search, filters, sorting, pagination, Excel export, import history, audit
-    history, authentication, actual catalogue data, professional UI, no exposed secrets, no fake production data.
-36. FINAL REPORT — 1 Architecture, 2 SQLite path, 3 Tables, 4 Migrations, 5 APIs, 6 Frontend modules, 7 Excel
-    functionality, 8 Group functionality, 9 Filtering, 10 Export, 11 Authentication, 12 WhatsApp status, 13 Tests
-    performed, 14 How to run, 15 Environment variables, 16 Known limitations, 17 Future PostgreSQL approach.
-```
+### Verified for real (2026-10-08, scratch DB `fitzobit_e2e`, since dropped)
+First-run setup → dashboard (empty and filled) → service city Coimbatore (found via OpenStreetMap) → Add Customer through the form
+(FITZ-000001 generated, Weekly from Mon 12 Oct → end Sat 17 Oct, all dropdowns from DB) → geocoded (RS Puram, Located (area)) →
+24 more customers (24/25 located; "Kurichi Pirivu" not found → no coordinates, listed as unlocated) → pause Sat 17 → end Mon 19;
+3 pauses → 4th refused; inactive customer pause refused → Auto suggestion: Group 1 Peelamedu, Group 2 RS Puram · Gandhipuram ·
+Saibaba Colony…, Group 3 Sundarapuram · Eachanari · Podanur · Kurichi → saved (history "-→2 … Delivery groups reclassified") →
+manual assign/move with history → Customers: Status Active + Group 2 + only 3 columns → Export dialog sent exactly those
+filters/columns → Excel and PDF each 9 rows, 3 columns, matching SQL; also search, pincode, meal type, frequency, combined filters
+and selected rows checked against SQL → Settings: added Frequency "Fortnightly" (12) → appeared in Add Customer, end date
+12 Oct → 24 Oct; deactivated → gone from the form and refused by the server → old pages 404 → phone width: no horizontal scroll
+on any page. Browser console: only the intentionally provoked 409/404s. Server log: no warnings/errors.
 
 ---
 
-## 6. Prompt to paste into the new chat
+## 2. Architecture (modular monolith, .NET 8 + React)
 
 ```
-Continue building the Fitzobit Delivery Management app (Part 3). First read
-E:\ClaudeWorkspace\Fitzobit\HANDOFF.md completely — it has the project state, architecture, what is already written
-for Part 3, the remaining work in order, gotchas, and the full Part 3 brief. Then continue from
-"Still to do for Part 3", step 1 (controllers). Do not rebuild working functionality, do not run git.
+src/Fitzobit.Domain          entities + pure rules: Customers, Dictionaries, DeliveryGroups, Deliveries (calendar),
+                             Geography (GeoClustering K-Means/silhouette/balance, GroupBoundaries hull), Settings, Users, Auditing
+src/Fitzobit.Application     use cases via IFitzobitDbContext: Customers (command/query/export + CustomerExportColumns/pause/
+                             schedule/location classifier), Dictionaries, DeliveryGroups, Geocoding, Classification, Dashboard,
+                             Users/Auth, Auditing, Messaging
+src/Fitzobit.Infrastructure  FitzobitDbContext, EntityConfigurations, Migrations (PostgreSQL), DatabaseConfigurator,
+                             SequenceCustomerIdGenerator, geocoding providers, Exports (CustomerExcelWriter, CustomerPdfWriter,
+                             PdfFonts), hashing, WhatsApp client
+src/Fitzobit.Web             ASP.NET Core host, thin controllers, auth/CSRF/headers, GeocodingWorker, serves wwwroot
+src/Fitzobit.UI              React 18 + TS + Vite → src/Fitzobit.Web/wwwroot (git-ignored; Docker builds it)
+tests/Fitzobit.Tests         xUnit, PostgreSQL integration + HTTP (WebApplicationFactory; geocoding disabled there)
+```
+
+Migrations (`src/Fitzobit.Infrastructure/Persistence/Migrations`): `20261008024903_InitialPostgreSql` (old schema = production
+today) → `20261008092400_CustomerDictionariesAndDeliveryDates` (hand-written; old plan/import/catalogue tables moved to schema
+**`legacy`**) → `20261008100654_DeliveryGroupNumbersAndGeocoding` (hand-written). Both have working Down migrations.
+Schema checked in Part 3: FKs all RESTRICT (Customers → DictionaryEntries ×4; pauses, assignments, history → Customers/Groups);
+unique: CustomerId, GroupNumber, (DictionaryType, Code), (CustomerId, PausedDate), one active assignment per customer; checks:
+PausedCount 0–3, EndDate ≥ StartDate, lat/long ranges, GroupNumber > 0; lat/long numeric(9,6); dates `date`; timestamps timestamptz.
+
+Conventions: primary constructors, records for DTOs, XML doc summaries, few comments. Enums as strings; DateTimes UTC;
+`SaveChanges` stamps Created/Updated At/By. `BusinessRuleException` → 409, `NotFoundException` → 404, concurrency/unique
+conflicts → 409, others → 500 with reference id. Audit via `IAuditLogger` in the same SaveChanges. Cookie auth (Admin/Manager,
+policies `Admin`/`Operate`, fallback = authenticated), CSRF header `X-XSRF-TOKEN`, security headers (CSP frame-ancestors none),
+data-protection keys in DB. `/api/health` anonymous.
+
+Toolchain: .NET SDK 9 targeting net8.0, EF Core / Npgsql 8.0.11, ClosedXML 0.104.2, PDFsharp-MigraDoc 6.2.4, React 18, Vite 5,
+lucide-react, Node 24 (Docker node:20).
+
+### Configuration (env var form; secrets never in source)
+`Database__ConnectionString` (secret) · `Database__MigrateOnStartup` · `Auth__SetupCode` (secret, first run) · `Auth__SessionHours` ·
+`Auth__AllowRemoteSetup` · `ForwardedHeaders__TrustAllProxies` (Render) · `Geocoding__Provider` (Nominatim/Google/None) ·
+`Geocoding__Nominatim__ContactEmail` · `Geocoding__Google__ApiKey` (secret) · `Export__MaxRows` / `Export__PdfMaxRows` /
+`Export__TimeZone` · `WhatsApp__*` (token secret) · `FITZOBIT_TEST_PG` (tests) · `FITZOBIT_DB_CONNECTION` (`dotnet ef`).
+
+---
+
+## 3. How to work on the code
+
+- Build: `dotnet build Fitzobit.sln`; UI: `cd src\Fitzobit.UI; npx tsc --noEmit -p .; npm run build`.
+- Tests: `dotnet test tests\Fitzobit.Tests`. If VS/IIS Express locks `bin\Debug`, add
+  `--artifacts-path E:\ClaudeWorkspace\Fitzobit\artifacts\testbuild`.
+- New migration: `dotnet ef migrations add <Name> -p src\Fitzobit.Infrastructure -s src\Fitzobit.Infrastructure -o Persistence\Migrations`
+  — **always review/hand-edit**: EF scaffolds renames/drops that lose data. Check `dotnet ef migrations has-pending-model-changes`.
+- Verifying a migration on realistic old data: `git archive HEAD | tar -x -C <scratch>` (no repo changes), run it against a
+  scratch DB, create data through its API, then run the new version on that DB.
+- Scratch DB access with psql: the postgres password is in `src\Fitzobit.Web\appsettings.Local.json`. Parse it with a small script into a temporary pgpass
+  in the scratchpad (`localhost:5432:*:postgres:<pw>`), set `PGPASSFILE`, never print it, delete it afterwards.
+  psql: `"/c/Program Files/PostgreSQL/18/bin/psql.exe"`.
+- Run a scratch instance: `Database__ConnectionString=…;Database=<scratch>` + `ASPNETCORE_ENVIRONMENT=Development`,
+  `dotnet run --project src\Fitzobit.Web --no-launch-profile --urls http://localhost:5091` (background); `Geocoding__Provider=None`
+  to avoid real lookups. Stop with PowerShell `Get-CimInstance Win32_Process … CommandLine -like '*Fitzobit.Web*'` → Stop-Process.
+  The app serves `wwwroot` from disk, so `npm run build` is visible after a page reload (C# changes need a restart).
+- E2E pattern used in Part 3: first-run setup with generated throwaway credentials kept in the scratchpad; bulk data via
+  `fetch('/api/customers', …)` from the page with header `X-XSRF-TOKEN` (cookie `XSRF-TOKEN`); export files verified by a Python
+  script (urllib login + openpyxl + PyMuPDF, both installed) against SQL; to avoid browser downloads, patch `window.fetch` and
+  `HTMLAnchorElement.prototype.click` in the page to capture the request instead.
+- Docker is not installed locally (no WSL either); `dotnet publish -c Release` reproduces the Docker build step.
+
+### Gotchas
+- Bash tool: heredocs with quotes/backticks (TSX, `''`) break → write a `.py` edit script to the scratchpad with the Write tool and
+  run it (exact-match asserts). Some files had BOMs (read with `utf-8-sig`).
+- `sleep N; cmd` chains are blocked → use `until <check>; do sleep 2; done` or a for-loop with curl.
+- Browser pane: `resize_window` 1440×900 for screenshots, preset `mobile` for phone checks (reset to desktop afterwards);
+  scroll needs a prior screenshot; iframes of the app are blocked by CSP (by design).
+- Login form field order: *Your name*, then *User name*.
+- Real OpenStreetMap lookups are slow by design (1/s); 25 customers ≈ 30 s. Indian addresses often match only at locality level
+  → many customers share one point (that is why Auto judges distinct locations).
+- PDFsharp's font resolver can be set only once per process (`PdfFonts.EnsureRegistered`).
+- **User secrets written by Claude's sandbox are invisible to the user's own programs** (2026-10-08). The secrets file
+  `%APPDATA%\Microsoft\UserSecrets\fitzobit-web-local\secrets.json` had been created by a sandboxed Claude session (its ACL
+  carries the sandbox SID `S-1-15-3-…`); Claude's tools could read it, but Visual Studio's app saw "not found" →
+  "Database:ConnectionString is not set". Fix: the user saves the secret himself (VS: right-click Fitzobit.Web → Manage User
+  Secrets). **Never set user secrets or other machine-wide files from the sandbox; give the user the steps instead.**
+  Claude's sandboxed process list also hides the user's processes (use `dangerouslyDisableSandbox` only for read-only checks).
+  `Program.cs` now stops with the environment name and the secrets file path (+ found / not found) when the string is missing.
+  Working setup now: **`src/Fitzobit.Web/appsettings.Local.json`** (git-ignored, `.dockerignore`d, `CopyToOutput/PublishDirectory=Never`)
+  holds the local connection string; `Program.cs` loads it only in Development (from the content root = project folder).
+  It is inserted **before** the environment-variable source, so `Database__ConnectionString` still wins (a first version added it
+  last and silently pointed a scratch instance at the real local DB; caught and fixed the same day).
+  2026-10-09: the fix inserted it before the FIRST environment source — that is the DOTNET_/ASPNETCORE_-prefixed host source,
+  which comes before appsettings.json, whose empty "ConnectionString" then overrode the local file. Now inserted before the
+  last *unprefixed* environment source. Verified outside the sandbox: local file only → connects; env var set → env var wins.
+  Files in the project folder written by Claude ARE visible to Visual Studio (unlike the user profile).
+
+---
+
+## 4. Samples (fake people)
+- `samples/Sample_Customers_Coimbatore_20.xlsx` — 20 customers in 20 real Coimbatore localities (old-app migration checks).
+- `samples/Add-SampleCustomers.ps1` — adds the 20 fake Coimbatore customers through the running app's API (asks for user name and
+  password; skips phones that already exist; `-BaseUrl https://localhost:44363` default = VS IIS Express, `http://localhost:5080`
+  for start.ps1). Tested twice on a scratch DB: 20 added, then 20 skipped. Sulur (641402) lies outside the city and is expected to
+  stay "Location unavailable".
+- `samples/exports/` — example Excel/PDF exports from the Part 3 test run (Active + Group 2 with 3 columns; all 18 columns landscape).
+- Other old-model Excel samples remain in `samples\`; `Fitzobit_WhatsApp_Catalogue.xlsx` in the root is old data, unused.
+
+## 5. Known limitations
+- Part 4 "start fresh": all existing package data is removed by the migration (owner's decision); packages must be re-entered.
+- `samples/Add-SampleCustomers.ps1` creates new customers only (one package, 07:30); it does not complete customers that already
+  exist without a package.
+- Docker/Linux path not run locally: the `fonts-liberation` apt step and PDFsharp on Linux are untested here (the embedded
+  Segoe WP fallback means PDF export still works if fonts are missing). Check one PDF export after deploying.
+- PDF export capped at 2,000 rows (the free Render instance has 0.1 CPU); larger lists → Excel.
+- Pauses cannot be undone (by design so far). Changing a frequency's delivery days affects end dates calculated from then on;
+  stored end dates are kept.
+- Geocoding precision depends on OpenStreetMap (often locality level in India); Google is more precise but needs a key + billing.
+- Auto grouping is a classification aid (K-Means + silhouette heuristic), not a route optimiser; the manager reviews before saving.
+- "Recent customer changes" links to the customer list search, not directly to the customer panel.
+- Real browser file download was not clicked in the test (captured instead); the download code path is unchanged from Part 1.
+
+## 6. Free-plan limits (told to the user)
+- Render free: sleeps after 15 min (first visit 30–60 s), 750 h/month, 0.1 CPU, 512 MB, no disk.
+- Neon free: 1 GB storage, 100 compute-h/month, sleeps after 5 min (wakes ~1 s), 6-hour restore window.
+
+---
+
+## 7. Prompt to paste into the new chat
+
+```
+Continue working on the Fitzobit Delivery Management app in E:\ClaudeWorkspace\Fitzobit.
+First read E:\ClaudeWorkspace\Fitzobit\HANDOFF.md completely (section 0 = current state and open items,
+section 1 = what Parts 1-4 of the new business model built, section 3 = how to build/test/verify).
+Inspect the existing code before changing anything. Do not rebuild working functionality.
+Use PostgreSQL (local appsettings.Local.json / Neon). Do not run git commit or git push - I commit and push myself.
+If anything is unclear, ask me with options instead of assuming.
+Then help me with: <write your next request here>
 ```

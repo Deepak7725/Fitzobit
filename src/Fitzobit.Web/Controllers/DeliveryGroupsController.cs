@@ -1,12 +1,15 @@
+using Fitzobit.Application.Classification;
+using Fitzobit.Application.Common;
 using Fitzobit.Application.DeliveryGroups;
-using Fitzobit.Application.Imports;
 using Fitzobit.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fitzobit.Web.Controllers;
 
-public sealed record GroupRequest(string Name, string? Description);
+/// <param name="Count">How many new groups to create (numbers continue after the highest existing one).</param>
+public sealed record CreateGroupsRequest(int Count, string? Notes);
+public sealed record GroupNotesRequest(string? Notes);
 public sealed record MoveCustomersRequest(List<int> CustomerIds, int TargetGroupId, string? Reason);
 
 [ApiController]
@@ -18,16 +21,13 @@ public sealed class DeliveryGroupsController(DeliveryGroupQueryService queries, 
     public Task<DeliveryGroupOverviewDto> List(CancellationToken ct) => queries.GetOverviewAsync(ct);
 
     [HttpPost]
-    public async Task<object> Create(GroupRequest request, CancellationToken ct)
-    {
-        var group = await groups.CreateAsync(request.Name, request.Description, ct);
-        return new { group.Id, group.Name };
-    }
+    public Task<IReadOnlyList<CreatedGroupDto>> Create(CreateGroupsRequest request, CancellationToken ct) =>
+        groups.CreateGroupsAsync(request.Count, request.Notes, ct);
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, GroupRequest request, CancellationToken ct)
+    public async Task<IActionResult> Update(int id, GroupNotesRequest request, CancellationToken ct)
     {
-        await groups.UpdateAsync(id, request.Name, request.Description, ct);
+        await groups.UpdateNotesAsync(id, request.Notes, ct);
         return NoContent();
     }
 
@@ -64,4 +64,30 @@ public sealed class DeliveryGroupsController(DeliveryGroupQueryService queries, 
     [HttpPost("move")]
     public Task<BulkAssignmentResult> Move(MoveCustomersRequest request, CancellationToken ct) =>
         groups.MoveAsync(request.CustomerIds, request.TargetGroupId, request.Reason, ct);
+}
+
+/// <summary>
+/// Data classification: customers on a longitude/latitude plot by delivery group, a deterministic suggestion for a chosen
+/// number of groups, evaluation of a manager-edited draft, and saving it (all changes recorded in the assignment history).
+/// </summary>
+[ApiController]
+[Route("api/classification")]
+[Authorize(Policy = Policies.Operate)]
+public sealed class ClassificationController(ClassificationService classification) : ControllerBase
+{
+    /// <param name="statuses">Customer status codes, comma separated (default ACTIVE,PAUSED).</param>
+    [HttpGet("map")]
+    public Task<MapDataDto> Map([FromQuery] string? statuses, CancellationToken ct) => classification.GetMapAsync(Split(statuses), ct);
+
+    [HttpPost("suggest")]
+    public Task<SuggestionDto> Suggest(SuggestRequest request, CancellationToken ct) => classification.SuggestAsync(request, ct);
+
+    [HttpPost("evaluate")]
+    public Task<DraftEvaluationDto> Evaluate(DraftRequest request, CancellationToken ct) => classification.EvaluateAsync(request, ct);
+
+    [HttpPost("apply")]
+    public Task<ApplyResultDto> Apply(DraftRequest request, CancellationToken ct) => classification.ApplyAsync(request, ct);
+
+    private static List<string>? Split(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 }

@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Fitzobit.Application;
@@ -13,18 +14,41 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration.EnvironmentVariables;
+using Microsoft.Extensions.Configuration.Json;
+using Microsoft.Extensions.Configuration.UserSecrets;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
+// Development only: optional, git-ignored appsettings.Local.json in the project folder (e.g. the local database password)
+// as an alternative to user secrets. Never published or copied into the Docker image.
+// Order: after appsettings*.json and user secrets, before the (unprefixed) environment variables and the command line, so a
+// real environment variable still wins. (The DOTNET_/ASPNETCORE_-prefixed sources come before appsettings.json; not those.)
+if (builder.Environment.IsDevelopment())
+{
+    var localSettings = new JsonConfigurationSource
+    {
+        Path = "appsettings.Local.json", Optional = true, ReloadOnChange = true, FileProvider = builder.Environment.ContentRootFileProvider
+    };
+    var sources = builder.Configuration.Sources;
+    var environment = sources.OfType<EnvironmentVariablesConfigurationSource>().LastOrDefault(s => string.IsNullOrEmpty(s.Prefix));
+    sources.Insert(environment is null ? sources.Count : sources.IndexOf(environment), localSettings);
+}
 
-// Relative paths in configuration (database file, catalogue workbook) are resolved against the repository root.
-var basePath = AppPaths.ResolveBasePath(builder.Configuration, builder.Environment.ContentRootPath);
+// A missing connection string stops the start with the environment and the user-secrets file this run looked for.
+if (string.IsNullOrWhiteSpace(builder.Configuration["Database:ConnectionString"]))
+{
+    var secretsId = typeof(Program).Assembly.GetCustomAttribute<UserSecretsIdAttribute>()?.UserSecretsId;
+    var secretsFile = secretsId is null ? "(no UserSecretsId)" : PathHelper.GetSecretsPathFromSecretsId(secretsId);
+    throw new InvalidOperationException($"{DatabaseConfigurator.MissingConnectionStringMessage} (Environment: " +
+        $"{builder.Environment.EnvironmentName}; user secrets file: {secretsFile} [{(File.Exists(secretsFile) ? "found" : "not found")}])");
+}
 
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration, basePath);
-builder.Services.AddSingleton(new AppPaths(basePath));
+builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+builder.Services.AddHostedService<GeocodingWorker>();
 
 // ---------- Authentication: HttpOnly, SameSite=Strict cookie; sessions re-validated against the user's security stamp ----------
 var requireHttpsCookies = builder.Configuration.GetValue("Auth:RequireHttpsCookies", !builder.Environment.IsDevelopment());

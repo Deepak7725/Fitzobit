@@ -13,3 +13,4 @@ src/Fitzobit.Web/wwwroot/
 src/Fitzobit.UI/dist/
 *.tsbuildinfo
 HANDOFF.md
+src/Fitzobit.Web/appsettings.Local.json

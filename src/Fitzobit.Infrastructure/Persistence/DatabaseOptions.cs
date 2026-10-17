@@ -1,6 +1,5 @@
-using Microsoft.Data.Sqlite;
-using Npgsql;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Fitzobit.Infrastructure.Persistence;
 
@@ -8,68 +7,30 @@ public sealed class DatabaseOptions
 {
     public const string SectionName = "Database";
 
-    /// <summary>"Sqlite" (default, local file) or "PostgreSQL" (hosted, e.g. Neon).</summary>
-    public string Provider { get; set; } = DatabaseProviders.Sqlite;
-
-    public string ConnectionString { get; set; } = "Data Source=data/fitzobit.db";
+    /// <summary>
+    /// PostgreSQL connection string: Npgsql format ("Host=…;Database=…;Username=…;Password=…") or a postgresql:// URL.
+    /// Never stored in the repository: user secrets locally, an environment variable (Database__ConnectionString) when hosted.
+    /// </summary>
+    public string ConnectionString { get; set; } = "";
 
     /// <summary>Apply pending migrations when the application starts.</summary>
     public bool MigrateOnStartup { get; set; } = true;
-
-    /// <summary>SQLite journal mode: WAL (default, local disks) or DELETE/TRUNCATE/PERSIST (network storage such as Azure App Service).</summary>
-    public string SqliteJournalMode { get; set; } = SqliteConnectionTuning.DefaultJournalMode;
 }
 
-public static class DatabaseProviders
+/// <summary>The single place that configures EF Core for PostgreSQL (Npgsql).</summary>
+public static class DatabaseConfigurator
 {
-    public const string Sqlite = "Sqlite";
-    public const string PostgreSql = "PostgreSQL";
-}
+    public const string MissingConnectionStringMessage =
+        "Database:ConnectionString is not set. Locally: dotnet user-secrets set \"Database:ConnectionString\" " +
+        "\"Host=localhost;Port=5432;Database=fitzobit;Username=postgres;Password=…\" --project src/Fitzobit.Web. " +
+        "Or put it in src/Fitzobit.Web/appsettings.Local.json (git-ignored). Both are read only when ASPNETCORE_ENVIRONMENT is " +
+        "Development (.\\start.ps1 or the \"http\" launch profile). Hosted: set the environment variable Database__ConnectionString. " +
+        "See README, \"Local PostgreSQL\".";
 
-/// <summary>
-/// The single place that knows which EF Core provider is in use. Adding PostgreSQL later means adding a
-/// case here (UseNpgsql + its own migrations assembly/folder); application code stays unchanged.
-/// </summary>
-public static class DatabaseProviderConfigurator
-{
-    public const string PostgreSqlMigrationsAssembly = "Fitzobit.Infrastructure.PostgreSql";
-
-    public static void Configure(DbContextOptionsBuilder builder, DatabaseOptions options, string basePath)
+    public static void Configure(DbContextOptionsBuilder builder, string connectionString)
     {
-        switch (options.Provider)
-        {
-            case var p when p.Equals(DatabaseProviders.Sqlite, StringComparison.OrdinalIgnoreCase):
-                builder.UseSqlite(ResolveSqliteConnectionString(options.ConnectionString, basePath),
-                        sqlite => sqlite.MigrationsHistoryTable("__EFMigrationsHistory"))
-                    .AddInterceptors(new SqliteConnectionTuning(options.SqliteJournalMode));
-                break;
-
-            case var p when p.Equals(DatabaseProviders.PostgreSql, StringComparison.OrdinalIgnoreCase):
-                // Migrations are provider-specific; PostgreSQL's live in their own assembly.
-                builder.UseNpgsql(ToNpgsqlConnectionString(options.ConnectionString),
-                    npgsql => npgsql.MigrationsAssembly(PostgreSqlMigrationsAssembly).MigrationsHistoryTable("__EFMigrationsHistory"));
-                break;
-
-            default:
-                throw new NotSupportedException($"Unknown database provider \"{options.Provider}\".");
-        }
-    }
-
-    /// <summary>
-    /// Makes a relative "Data Source" absolute (relative to <paramref name="basePath"/>) and creates its folder,
-    /// so the database location does not depend on the process working directory.
-    /// </summary>
-    public static string ResolveSqliteConnectionString(string connectionString, string basePath)
-    {
-        var csb = new SqliteConnectionStringBuilder(connectionString);
-        if (string.IsNullOrWhiteSpace(csb.DataSource) || csb.DataSource == ":memory:" || csb.Mode == SqliteOpenMode.Memory)
-            return csb.ToString();
-
-        if (!Path.IsPathRooted(csb.DataSource))
-            csb.DataSource = Path.GetFullPath(Path.Combine(basePath, csb.DataSource));
-
-        Directory.CreateDirectory(Path.GetDirectoryName(csb.DataSource)!);
-        return csb.ToString();
+        if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException(MissingConnectionStringMessage);
+        builder.UseNpgsql(ToNpgsqlConnectionString(connectionString), npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory"));
     }
 
     /// <summary>
@@ -102,9 +63,17 @@ public static class DatabaseProviderConfigurator
         return csb.ConnectionString;
     }
 
-    public static string? GetSqliteFilePath(string connectionString, string basePath)
+    /// <summary>Host and database name only (never user or password), for display.</summary>
+    public static string Describe(string connectionString)
     {
-        var csb = new SqliteConnectionStringBuilder(ResolveSqliteConnectionString(connectionString, basePath));
-        return csb.DataSource == ":memory:" ? null : csb.DataSource;
+        try
+        {
+            var csb = new NpgsqlConnectionStringBuilder(ToNpgsqlConnectionString(connectionString));
+            return $"{csb.Database} on {csb.Host}";
+        }
+        catch (ArgumentException)
+        {
+            return "(unreadable connection string)";
+        }
     }
 }

@@ -8,14 +8,14 @@ PostgreSQL database.
 | **Render** (the app) | 512 MB RAM, 0.1 CPU, 750 hours/month. **Sleeps after 15 minutes without visitors**; the next visit takes about 30–60 seconds to wake it. Render may verify a card with a $1 hold that is cancelled. |
 | **Neon** (the database) | No card. 0.5 GB storage (plenty for thousands of customers), 100 compute-hours per month, sleeps after 5 idle minutes and wakes in about a second. |
 
-Your PC can be off. Locally, the app keeps using SQLite (`data\fitzobit.db`); only the hosted copy uses PostgreSQL.
+Your PC can be off. Locally the app uses your own PostgreSQL (see the README, *Local PostgreSQL*); the hosted copy uses Neon. The two hold separate data.
 
 ---
 
 ## 1. Put the latest code on GitHub
 
 Render deploys from your GitHub repository (`Deepak7725/Fitzobit`). Commit and push the current code, including
-`Dockerfile`, `render.yaml` and `src/Fitzobit.Infrastructure.PostgreSql`.
+`Dockerfile` and `render.yaml`. (The Docker image also installs the free Liberation fonts used by PDF exports.)
 
 ## 2. Create the database on Neon (about 3 minutes)
 
@@ -40,7 +40,6 @@ Render deploys from your GitHub repository (`Deepak7725/Fitzobit`). Commit and p
    Wait until the log ends with *Your service is live*.
 
 `render.yaml` also sets these, so you don't need to:
-- `Database__Provider=PostgreSQL`
 - `ForwardedHeaders__TrustAllProxies=true`
 - `Auth__SetupCode`, a random secret Render generates.
 
@@ -75,5 +74,6 @@ Render deploys from your GitHub repository (`Deepak7725/Fitzobit`). Commit and p
 
 ## Moving existing local data (optional)
 
-The hosted site starts empty, apart from the catalogue. To bring customers from `data\fitzobit.db`, the simplest
-route is to re-upload your customer Excel files in the hosted app. Ask if you need a direct SQLite → PostgreSQL copy instead.
+Local and hosted databases are separate. To copy local customers to Neon, use `pg_dump` from the local database and
+`psql` against the Neon connection string (ask if you need step-by-step instructions). An existing Neon database is
+upgraded in place by the migrations when the new version starts; its customers are kept.

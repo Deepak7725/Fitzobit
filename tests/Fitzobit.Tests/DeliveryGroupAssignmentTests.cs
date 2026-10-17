@@ -15,12 +15,12 @@ public class DeliveryGroupAssignmentTests
     private static async Task<Seeded> SeedAsync(TestDatabase test)
     {
         await using var db = test.CreateContext();
-        var customer = new Customer { CustomerId = "CUST005", CustomerName = "Karthik N", Pincode = "641002" };
+        var customer = new Customer { CustomerId = "CUST005", CustomerName = "Karthik N", Pincode = "641002", StatusId = test.Entry(Domain.Dictionaries.DictionaryType.CustomerStatus, "ACTIVE") };
         customer.SetPhoneNumber("9090909090");
-        customer.SetLocation("RS Puram, Coimbatore");
-        var north = new DeliveryGroup { Name = "Coimbatore North" };
-        var south = new DeliveryGroup { Name = "Coimbatore South" };
-        var inactive = new DeliveryGroup { Name = "Old Route", Status = RecordStatus.Inactive };
+        customer.SetAddress("RS Puram, Coimbatore");
+        var north = new DeliveryGroup { GroupNumber = 1 };
+        var south = new DeliveryGroup { GroupNumber = 2 };
+        var inactive = new DeliveryGroup { GroupNumber = 3, Status = RecordStatus.Inactive };
         db.AddRange(customer, north, south, inactive);
         await db.SaveChangesAsync();
         return new Seeded(customer.Id, north.Id, south.Id, inactive.Id);

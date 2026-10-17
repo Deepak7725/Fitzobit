@@ -1,6 +1,4 @@
-using Fitzobit.Application.Catalogue;
 using Fitzobit.Application.Dashboard;
-using Fitzobit.Application.Imports;
 using Fitzobit.Infrastructure.Diagnostics;
 using Fitzobit.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -18,26 +16,10 @@ public sealed class DashboardController(DashboardService dashboard) : Controller
 }
 
 [ApiController]
-[Route("api/catalogue")]
-[Authorize(Policy = Policies.Operate)]
-public sealed class CatalogueController(CatalogueService catalogue, ImportQueryService imports) : ControllerBase
-{
-    [HttpGet]
-    public Task<CatalogueOverviewDto> Get(CancellationToken ct) => catalogue.GetOverviewAsync(ct);
-
-    [HttpGet("plans")]
-    public Task<IReadOnlyList<PlanDto>> Plans(CancellationToken ct) => catalogue.GetPlansAsync(ct);
-
-    /// <summary>Active plans with their pricing tiers, for plan-mapping drop-downs.</summary>
-    [HttpGet("plan-options")]
-    public Task<IReadOnlyList<PlanOptionDto>> PlanOptions(CancellationToken ct) => imports.GetPlanOptionsAsync(ct);
-}
-
-[ApiController]
 [Route("api/system")]
 [Authorize(Policy = Policies.Admin)]
-public sealed class SystemController(SystemInfoService systemInfo, AppPaths paths) : ControllerBase
+public sealed class SystemController(SystemInfoService systemInfo) : ControllerBase
 {
     [HttpGet]
-    public Task<SystemInfoDto> Get(CancellationToken ct) => systemInfo.GetAsync(paths.BasePath, ct);
+    public Task<SystemInfoDto> Get(CancellationToken ct) => systemInfo.GetAsync(ct);
 }

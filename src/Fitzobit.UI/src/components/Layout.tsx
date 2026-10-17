@@ -1,26 +1,15 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import {
-  BookOpen,
-  History,
-  LayoutDashboard,
-  Menu,
-  Settings,
-  Table2,
-  Upload,
-  UsersRound,
-  X,
-} from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Menu, Settings, Table2, UserPlus, UsersRound, X } from 'lucide-react';
 import { useAuth } from '../auth';
 import UserMenu from './UserMenu';
 
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/upload', label: 'Upload & Create Groups', icon: Upload },
-  { to: '/data', label: 'View Data', icon: Table2 },
+  { to: '/data', label: 'Customers', icon: Table2 },
+  { to: '/customers/new', label: 'Add Customer', icon: UserPlus },
+  { to: '/map', label: 'Delivery Classification', icon: MapIcon },
   { to: '/groups', label: 'Delivery Groups', icon: UsersRound },
-  { to: '/imports', label: 'Import History', icon: History },
-  { to: '/catalogue', label: 'Catalogue / Plans', icon: BookOpen },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

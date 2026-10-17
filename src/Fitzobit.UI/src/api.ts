@@ -1,110 +1,5 @@
 // Typed client for the Fitzobit API. Shapes mirror the C# DTOs in Fitzobit.Application.
-
-export interface CatalogueWarning {
-  code: string;
-  title: string;
-  message: string;
-}
-
-export interface CataloguePricingTier {
-  id: number;
-  tierName: string;
-  price: number;
-  currency: string;
-  billingPeriod: string;
-  mealCount: number | null;
-  description: string | null;
-  source: string | null;
-}
-
-export interface CatalogueItem {
-  id: number;
-  name: string;
-  category: string | null;
-  term: string | null;
-  description: string | null;
-  displayPrice: number;
-  currency: string;
-  billingPeriod: string;
-  durationText: string | null;
-  durationDays: number | null;
-  mealCount: number | null;
-  includedItems: string | null;
-  availability: string | null;
-  displayOrder: number;
-  source: string | null;
-  sourceNotes: string | null;
-  planCode: string | null;
-  pricingTiers: CataloguePricingTier[];
-  warnings: CatalogueWarning[];
-}
-
-export interface CategorySummary {
-  name: string;
-  itemCount: number;
-  warningCount: number;
-}
-
-export interface CatalogueOverview {
-  items: CatalogueItem[];
-  categories: CategorySummary[];
-  totalItems: number;
-  totalPricingTiers: number;
-  itemsWithWarnings: number;
-  source: string | null;
-  lastUpdatedAt: string | null;
-}
-
-export interface Plan {
-  id: number;
-  name: string;
-  code: string;
-  category: string | null;
-  description: string | null;
-  status: string;
-  catalogueItemId: number | null;
-  customerCount: number;
-}
-
-export interface ImportBatch {
-  id: number;
-  fileName: string;
-  uploadedAt: string;
-  uploadedBy: string | null;
-  totalRows: number;
-  validRows: number;
-  invalidRows: number;
-  warningRows: number;
-  importedCount: number;
-  customersCreated: number;
-  groupsCreated: number;
-  assignmentsChanged: number;
-  status: string;
-  failureReason: string | null;
-  validationDurationMs: number;
-  saveDurationMs: number;
-  completedAt: string | null;
-}
-
-export interface DashboardSummary {
-  totalCustomers: number;
-  totalDeliveryGroups: number;
-  uniqueLocations: number;
-  uniquePincodes: number;
-  activePlans: number;
-  unassignedCustomers: number;
-  recentImports: number;
-  recentImportWindowDays: number;
-  catalogueItems: number;
-  cataloguePricingTiers: number;
-  catalogueItemsWithWarnings: number;
-  latestImports: ImportBatch[];
-  catalogueCategories: CategorySummary[];
-  customersByGroup: ChartItem[];
-  customersByPlan: ChartItem[];
-  customersByPincode: ChartItem[];
-  customersByCity: ChartItem[];
-}
+// Dates without a time (start/end/pause dates) are "yyyy-mm-dd" strings; timestamps are ISO strings in UTC.
 
 export interface ChartItem {
   key: string;
@@ -112,18 +7,70 @@ export interface ChartItem {
   count: number;
 }
 
+export interface StatusCount {
+  id: number;
+  /** Stable dictionary code: ACTIVE, PAUSED, INACTIVE, … */
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface RecentChange {
+  id: number;
+  occurredAt: string;
+  action: string;
+  customerId: string | null;
+  /** Internal id for opening the customer (null if it no longer exists). */
+  customerKey: number | null;
+  summary: string;
+  performedBy: string | null;
+}
+
+export interface DashboardSummary {
+  totalCustomers: number;
+  totalPackages: number;
+  activeCustomers: number;
+  pausedCustomers: number;
+  inactiveCustomers: number;
+  totalDeliveryGroups: number;
+  unassignedCustomers: number;
+  unassignedActiveCustomers: number;
+  withCoordinates: number;
+  withoutCoordinates: number;
+  approximateCoordinates: number;
+  endingSoon: number;
+  endingSoonWindowDays: number;
+  incompleteCustomers: number;
+  customersByStatus: StatusCount[];
+  customersByGroup: ChartItem[];
+  customersByMealType: ChartItem[];
+  customersByFrequency: ChartItem[];
+  customersByPincode: ChartItem[];
+  customersByCity: ChartItem[];
+  recentChanges: RecentChange[];
+}
+
+export interface CountItem {
+  label: string;
+  count: number;
+}
+
 export interface DeliveryGroup {
   id: number;
+  groupNumber: number;
+  /** "Group 3" */
   name: string;
-  description: string | null;
+  notes: string | null;
   status: string;
   activeCustomerCount: number;
   locationCount: number;
   pincodeCount: number;
   pincodes: string[];
   localities: string[];
-  planCount: number;
-  plans: string[];
+  mealTypes: CountItem[];
+  frequencies: CountItem[];
+  statusCounts: CountItem[];
+  locatedCount: number;
   createdAt: string;
   createdBy: string | null;
   updatedAt: string;
@@ -140,11 +87,13 @@ export interface GroupCustomer {
   customerId: string;
   customerName: string;
   phoneNumber: string;
-  location: string | null;
+  address: string | null;
   pincode: string | null;
   locality: string | null;
   city: string | null;
-  planName: string | null;
+  mealType: string | null;
+  status: string;
+  hasLocation: boolean;
   assignedAt: string | null;
 }
 
@@ -156,49 +105,6 @@ export interface MovePreview {
   messages: string[];
 }
 
-// ---------- Import workflow ----------
-
-export interface ImportIssue {
-  code: string;
-  severity: 'Warning' | 'Error';
-  message: string;
-  field: string | null;
-}
-
-export interface GroupRef {
-  key: string;
-  name: string;
-  isNew: boolean;
-}
-
-export interface ImportRow {
-  id: number;
-  rowNumber: number;
-  customerId: string | null;
-  customerName: string | null;
-  phoneNumber: string | null;
-  normalizedPhoneNumber: string | null;
-  location: string | null;
-  normalizedLocation: string | null;
-  pincode: string | null;
-  locality: string | null;
-  city: string | null;
-  plan: string | null;
-  planId: number | null;
-  planName: string | null;
-  tierName: string | null;
-  status: 'Valid' | 'Warning' | 'Error';
-  issues: ImportIssue[];
-  isExistingCustomer: boolean;
-  isPotentialDuplicate: boolean;
-  included: boolean;
-  excludedByManager: boolean;
-  group: GroupRef | null;
-  existingGroupName: string | null;
-  suggestedGroup: GroupRef | null;
-  suggestionReason: string | null;
-}
-
 export interface Paged<T> {
   items: T[];
   total: number;
@@ -206,195 +112,62 @@ export interface Paged<T> {
   pageSize: number;
 }
 
-export interface ImportSummary {
-  totalRows: number;
-  validRows: number;
-  warningRows: number;
-  errorRows: number;
-  newCustomers: number;
-  existingCustomers: number;
-  duplicates: number;
-  locations: number;
-  pincodes: number;
-  plans: number;
-  toImport: number;
-  excludedByManager: number;
-  unassigned: number;
-  keepingCurrentGroup: number;
-  missingPincode: number;
-  unresolvedPlanMappings: number;
-}
-
-export interface ImportDetail {
-  id: number;
-  fileName: string;
-  fileSizeBytes: number;
-  sheetName: string | null;
-  uploadedAt: string;
-  uploadedBy: string | null;
-  status: 'Pending' | 'Validated' | 'Completed' | 'Failed' | 'Cancelled';
-  failureReason: string | null;
-  fileMessages: string[];
-  emptyRowsSkipped: number;
-  validationDurationMs: number;
-  saveDurationMs: number;
-  completedAt: string | null;
-  importedCount: number;
-  customersCreated: number;
-  existingCustomersMatched: number;
-  groupsCreated: number;
-  assignmentsChanged: number;
-  summary: ImportSummary | null;
-}
-
-export interface CountItem {
-  key: string;
-  label: string;
-  count: number;
-}
-
-export interface ImportClassification {
-  includedRows: number;
-  newCustomers: number;
-  existingCustomers: number;
-  withoutPincode: number;
-  withoutGroup: number;
-  potentialDuplicates: number;
-  byLocation: CountItem[];
-  byLocality: CountItem[];
-  byCity: CountItem[];
-  byPincode: CountItem[];
-  byPlan: CountItem[];
-  byCategory: CountItem[];
-}
-
-export interface PlanOption {
-  id: number;
-  name: string;
-  code: string;
-  category: string | null;
-  tiers: { id: number; name: string; price: number; billingPeriod: string }[];
-}
-
-export interface PlanMapping {
-  id: number;
-  planKey: string;
-  exampleText: string;
-  rowCount: number;
-  status: 'Mapped' | 'Ambiguous' | 'Unknown';
-  method: 'None' | 'SavedAlias' | 'ExactName' | 'Keywords' | 'Manual';
-  planId: number | null;
-  planName: string | null;
-  pricingTierId: number | null;
-  tierName: string | null;
-  candidatePlanIds: number[];
-  note: string | null;
-}
-
-export interface ImportGroupSummary {
-  key: string;
-  name: string;
-  description: string | null;
-  isNew: boolean;
-  status: string;
-  customerCount: number;
-  newCustomerCount: number;
-  existingMembersOutsideImport: number;
-  pincodeCount: number;
-  pincodes: string[];
-  locationCount: number;
-  localities: string[];
-  planCount: number;
-  plans: string[];
-}
-
-export interface IssueCount {
-  code: string;
-  label: string;
-  count: number;
-}
-
-export interface ImportReview {
-  summary: ImportSummary;
-  groups: ImportGroupSummary[];
-  unassigned: number;
-  unknownPlan: number;
-  missingPincode: number;
-  groupChangesForExistingCustomers: number;
-  warnings: IssueCount[];
-  excludedErrors: IssueCount[];
-  canSave: boolean;
-  blockers: string[];
-}
-
-export interface AssignmentPreview {
-  selectedRows: number;
-  willChange: number;
-  alreadyInTarget: number;
-  targetName: string | null;
-  moves: { fromKey: string | null; fromName: string; count: number }[];
-  messages: string[];
-}
-
-export interface SuggestionResult {
-  rowsWithSuggestion: number;
-  differentFromCurrent: number;
-  byRule: CountItem[];
-}
-
-export interface CommitResult {
-  batchId: number;
-  customersCreated: number;
-  existingCustomersMatched: number;
-  groupsCreated: number;
-  assignmentsChanged: number;
-  importedCount: number;
-  skippedRows: number;
-  durationMs: number;
-}
-
-export interface UploadResult {
-  batchId: number;
-  status: string;
-  errors: string[];
-}
-
-export interface RowFilter {
-  status?: string;
-  search?: string;
-  pincode?: string;
-  locality?: string;
-  city?: string;
-  location?: string;
-  group?: string;
-  planId?: number;
-  issueCode?: string;
-  existing?: boolean;
-  hasSuggestion?: boolean;
-}
-
-export interface RowSelection {
-  rowIds?: number[];
-  filter?: RowFilter;
-}
-
 export interface SystemInfo {
   applicationName: string;
   version: string;
   databaseProvider: string;
-  databaseFile: string | null;
+  database: string;
   databaseSizeBytes: number | null;
   appliedMigrations: string[];
   pendingMigrations: string[];
   tables: string[];
-  catalogueSourceFile: string;
-  catalogueSourceExists: boolean;
   userName: string;
   userDisplayName: string;
   userRole: string;
 }
 
-// ---------- Auth & View Data ----------
+// ---------- Drop-down values (DictionaryEntries) ----------
+
+export type DictionaryType = 'Preference' | 'MealType' | 'Frequency' | 'CustomerStatus';
+
+export interface DictionaryOption {
+  id: number;
+  code: string;
+  displayName: string;
+  sortOrder: number;
+  /** Frequency: delivery days per package. */
+  numericValue: number | null;
+}
+
+export interface DictionaryOptions {
+  preference: DictionaryOption[];
+  mealType: DictionaryOption[];
+  frequency: DictionaryOption[];
+  customerStatus: DictionaryOption[];
+}
+
+export interface DictionaryEntry {
+  id: number;
+  dictionaryType: DictionaryType;
+  code: string;
+  displayName: string;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  numericValue: number | null;
+  customerCount: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+export interface SaveDictionaryEntry {
+  displayName: string;
+  numericValue: number | null;
+  isActive: boolean;
+}
+
+// ---------- Auth & customers ----------
 
 export interface SignedInUser {
   id: number;
@@ -414,11 +187,15 @@ export interface AuthState {
 export interface CustomerFilter {
   search?: string;
   group?: string;
-  planId?: number;
+  preferenceId?: number;
+  mealTypeId?: number;
+  frequencyId?: number;
+  statusId?: number;
   pincode?: string;
-  location?: string;
-  status?: string;
-  importBatchId?: number;
+  address?: string;
+  incomplete?: boolean;
+  /** located | approximate | missing */
+  geo?: string;
   sort?: string;
   desc?: boolean;
 }
@@ -428,16 +205,28 @@ export interface CustomerListItem {
   customerId: string;
   customerName: string;
   phoneNumber: string;
-  location: string | null;
+  address: string | null;
   pincode: string | null;
-  planId: number | null;
-  planName: string | null;
-  groupId: number | null;
-  groupName: string | null;
+  /** "HH:mm:ss" */
+  preferredDeliveryTime: string | null;
+  packages: PackageSummary[];
+  /** Earliest start / latest end of the customer's packages. */
+  startDate: string | null;
+  endDate: string | null;
   status: string;
+  statusCode: string;
+  groupId: number | null;
+  groupNumber: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocodeStatus: GeocodeStatus;
+  geocodeMatchLevel: GeoMatchLevel | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type GeocodeStatus = 'Pending' | 'Located' | 'NotFound' | 'Failed';
+export type GeoMatchLevel = 'Address' | 'Locality' | 'Pincode';
 
 export interface FilterOption {
   id: number;
@@ -447,8 +236,10 @@ export interface FilterOption {
 
 export interface CustomerFilterOptions {
   groups: FilterOption[];
-  plans: FilterOption[];
-  imports: { id: number; fileName: string; uploadedAt: string; importedCount: number }[];
+  preferences: FilterOption[];
+  mealTypes: FilterOption[];
+  frequencies: FilterOption[];
+  statuses: FilterOption[];
   pageSizes: number[];
 }
 
@@ -456,9 +247,9 @@ export interface AssignmentHistoryEntry {
   changedAt: string;
   changedBy: string | null;
   previousGroupId: number | null;
-  previousGroupName: string | null;
+  previousGroupNumber: number | null;
   newGroupId: number | null;
-  newGroupName: string | null;
+  newGroupNumber: number | null;
   reason: string | null;
 }
 
@@ -477,30 +268,96 @@ export interface AuditEntry {
   details: JsonValue;
 }
 
+export interface PackageSummary {
+  id: number;
+  preference: string;
+  mealType: string;
+  quantity: number;
+  frequency: string;
+  startDate: string;
+  endDate: string;
+  pausedCount: number;
+  /** "Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026)" */
+  text: string;
+}
+
+export interface CustomerPackage {
+  id: number;
+  preferenceId: number;
+  preference: string;
+  mealTypeId: number;
+  mealType: string;
+  quantity: number;
+  frequencyId: number;
+  frequency: string;
+  frequencyDeliveryDays: number | null;
+  startDate: string;
+  endDate: string;
+  deliveryDaysLeft: number | null;
+  pausedCount: number;
+  maxPauses: number;
+  pauses: CustomerPause[];
+  /** The first delivery day has not come yet. */
+  canDelete: boolean;
+  createdAt: string;
+  createdBy: string | null;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+export interface CustomerNote {
+  id: number;
+  text: string;
+  createdAt: string;
+  createdBy: string | null;
+  createdByName: string | null;
+  updatedAt: string;
+  updatedBy: string | null;
+  edited: boolean;
+  /** The signed-in user wrote it or is an Admin. */
+  canEdit: boolean;
+}
+
+export interface CustomerPause {
+  pausedDate: string;
+  previousEndDate: string;
+  newEndDate: string;
+  reason: string | null;
+  createdAt: string;
+  createdBy: string | null;
+}
+
 export interface CustomerDetail {
   id: number;
   customerId: string;
   customerName: string;
   phoneNumber: string;
   normalizedPhoneNumber: string | null;
-  location: string | null;
-  normalizedLocation: string | null;
+  address: string | null;
   pincode: string | null;
   locality: string | null;
   city: string | null;
-  planId: number | null;
-  planName: string | null;
-  planCategory: string | null;
-  pricingTierId: number | null;
-  tierName: string | null;
-  originalPlan: string | null;
+  /** "HH:mm:ss" */
+  preferredDeliveryTime: string | null;
+  packages: CustomerPackage[];
+  notes: CustomerNote[];
+  statusId: number;
   status: string;
+  statusCode: string;
+  latitude: number | null;
+  longitude: number | null;
+  geocodeStatus: GeocodeStatus;
+  geocodeMatchLevel: GeoMatchLevel | null;
+  geocodeMessage: string | null;
+  geocodeSource: string | null;
+  geocodedAt: string | null;
+  geocodeNextAttemptAt: string | null;
+  legacyPlan: string | null;
   groupId: number | null;
-  groupName: string | null;
+  groupNumber: number | null;
   assignedAt: string | null;
   assignedBy: string | null;
   history: AssignmentHistoryEntry[];
-  importBatch: { id: number; fileName: string; uploadedAt: string; uploadedBy: string | null } | null;
   audit: AuditEntry[];
   createdAt: string;
   createdBy: string | null;
@@ -508,14 +365,45 @@ export interface CustomerDetail {
   updatedBy: string | null;
 }
 
-export interface UpdateCustomerRequest {
+/** Fields of the Add/Edit customer screens. CustomerID is always decided by the server. */
+export interface SaveCustomerRequest {
   customerName: string;
   phoneNumber: string;
-  location: string | null;
-  planId: number | null;
-  pricingTierId: number | null;
-  status: string;
+  address: string;
+  pincode: string | null;
+  /** "HH:mm:ss" */
+  preferredDeliveryTime: string | null;
+  statusId: number | null;
+}
+
+/** A package as entered. End date and paused count are always decided by the server. */
+export interface SavePackageRequest {
+  preferenceId: number | null;
+  mealTypeId: number | null;
+  quantity: number | null;
+  frequencyId: number | null;
+  startDate: string | null;
+}
+
+export interface CreateCustomerRequest extends SaveCustomerRequest {
+  packages: SavePackageRequest[];
+  note: string | null;
+}
+
+export interface UpdateCustomerRequest extends SaveCustomerRequest {
   expectedUpdatedAt: string;
+}
+
+export interface UpdatePackageRequest extends SavePackageRequest {
+  expectedUpdatedAt: string;
+  confirmScheduleChange: boolean;
+}
+
+export interface CreateCustomerResult {
+  id: number;
+  customerId: string;
+  packages: { id: number; startDate: string; endDate: string }[];
+  warnings: string[];
 }
 
 export interface UpdateCustomerResult {
@@ -524,13 +412,45 @@ export interface UpdateCustomerResult {
   warnings: string[];
 }
 
+export interface PackageSaved {
+  id: number;
+  startDate: string;
+  endDate: string;
+  pausedCount: number;
+}
+
+export interface SchedulePreview {
+  startDate: string;
+  endDate: string;
+  deliveryDays: number;
+  calendarDays: number;
+  frequency: string;
+}
+
+export interface PauseResult {
+  pausedDate: string;
+  packages: { packageId: number; package: string; previousEndDate: string; newEndDate: string; pausedCount: number; pausesLeft: number }[];
+}
+
 export interface BulkResult {
   requested: number;
   changed: number;
   alreadyInGroup: number;
 }
 
-export type ExportScope = 'All' | 'Filtered' | 'Selected';
+export type ExportScope = 'All' | 'Filtered' | 'Selected' | 'Page';
+export type ExportFormat = 'Excel' | 'Pdf';
+
+export interface ExportRequest {
+  scope: ExportScope;
+  format: ExportFormat;
+  filter: CustomerFilter;
+  ids?: number[];
+  /** Column keys in display order; empty = every column. */
+  columns: string[];
+  page?: number;
+  pageSize?: number;
+}
 
 export interface AppUser {
   id: number;
@@ -553,37 +473,127 @@ export interface WhatsAppStatus {
   messagesByStatus: Record<string, number>;
 }
 
+// ---------- Delivery area & classification ----------
+
+export interface ServiceArea {
+  city: string | null;
+  state: string | null;
+  country: string;
+  isConfigured: boolean;
+  areaFound: boolean;
+  centerLatitude: number | null;
+  centerLongitude: number | null;
+  areaMessage: string | null;
+  geocodingProvider: string;
+  geocodingConfigured: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface MapPoint {
+  id: number;
+  customerId: string;
+  name: string;
+  address: string | null;
+  pincode: string | null;
+  /** Locality from the address, or "PIN 641002". */
+  area: string | null;
+  lat: number;
+  lng: number;
+  approximate: boolean;
+  status: string;
+  statusCode: string;
+  mealType: string | null;
+  groupId: number | null;
+  groupNumber: number | null;
+}
+
+export interface UnlocatedCustomer {
+  id: number;
+  customerId: string;
+  name: string;
+  address: string | null;
+  pincode: string | null;
+  geocodeStatus: GeocodeStatus;
+  message: string | null;
+  groupId: number | null;
+  groupNumber: number | null;
+}
+
+export interface Boundary {
+  kind: 'none' | 'point' | 'line' | 'polygon';
+  /** [latitude, longitude] pairs */
+  points: [number, number][];
+}
+
+export interface MapGroup {
+  id: number | null;
+  number: number;
+  isNew: boolean;
+  isActive: boolean;
+  customerCount: number;
+  locatedCount: number;
+  boundary: Boundary;
+  centerLat: number | null;
+  centerLng: number | null;
+  /** The group's areas, most customers first. */
+  areas: { name: string; count: number }[];
+}
+
+export interface MapData {
+  points: MapPoint[];
+  unlocated: UnlocatedCustomer[];
+  unlocatedTotal: number;
+  groups: MapGroup[];
+  inScope: number;
+  located: number;
+  approximate: number;
+  unassigned: number;
+  statuses: string[];
+  area: ServiceArea;
+}
+
+export interface ChangeSummary {
+  assigned: number;
+  moved: number;
+  removed: number;
+  unchanged: number;
+  newGroupNumbers: number[];
+  messages: string[];
+}
+
+export interface Suggestion {
+  requestedGroups: number;
+  groupsUsed: number;
+  assignments: { id: number; groupNumber: number | null; basis: 'location' | 'pincode' | 'unchanged' }[];
+  groups: MapGroup[];
+  changes: ChangeSummary;
+  notes: string[];
+}
+
+export interface DraftAssignment {
+  customerId: number;
+  groupNumber: number | null;
+}
+
+export interface DraftEvaluation {
+  groups: MapGroup[];
+  changes: ChangeSummary;
+}
+
+export interface ApplyResult {
+  assigned: number;
+  moved: number;
+  removed: number;
+  unchanged: number;
+  createdGroupNumbers: number[];
+}
+
 export interface AppSettings {
-  import: { maxFileSizeBytes: number; maxRows: number; acceptedFileType: string };
-  export: { maxRows: number; timeZone: string; columns: string[] };
+  export: { maxRows: number; pdfMaxRows: number; timeZone: string; columns: string[] };
   locations: { knownCities: string[]; cityAliases: Record<string, string>; regionWords: string[] };
-  catalogue: { fileName: string; exists: boolean; syncOnStartup: boolean };
   security: { sessionHours: number; passwordMinLength: number; maxFailedAttempts: number; lockoutMinutes: number };
   whatsApp: WhatsAppStatus;
-}
-
-export interface PlanAlias {
-  id: number;
-  originalText: string;
-  aliasKey: string;
-  planId: number;
-  planName: string;
-  tierName: string | null;
-  createdAt: string;
-  createdBy: string | null;
-}
-
-export interface CatalogueSeedResult {
-  skipped: boolean;
-  skipReason: string | null;
-  itemsCreated: number;
-  itemsUpdated: number;
-  itemsUnchanged: number;
-  tiersCreated: number;
-  tiersUpdated: number;
-  tiersRemoved: number;
-  plansCreated: number;
-  itemsNotInSource: number;
 }
 
 // ---------- HTTP ----------
@@ -671,18 +681,13 @@ function query(params: Record<string, string | number | boolean | undefined | nu
   return s ? `?${s}` : '';
 }
 
-export const templateUrl = '/api/imports/template';
-
 export const api = {
   dashboard: (signal?: AbortSignal) => get<DashboardSummary>('/api/dashboard', signal),
-  catalogue: (signal?: AbortSignal) => get<CatalogueOverview>('/api/catalogue', signal),
-  plans: (signal?: AbortSignal) => get<Plan[]>('/api/catalogue/plans', signal),
-  planOptions: (signal?: AbortSignal) => get<PlanOption[]>('/api/catalogue/plan-options', signal),
   system: (signal?: AbortSignal) => get<SystemInfo>('/api/system', signal),
 
   deliveryGroups: (signal?: AbortSignal) => get<DeliveryGroupOverview>('/api/delivery-groups', signal),
-  createGroup: (name: string, description: string | null) => send<{ id: number; name: string }>('POST', '/api/delivery-groups', { name, description }),
-  updateGroup: (id: number, name: string, description: string | null) => send('PUT', `/api/delivery-groups/${id}`, { name, description }),
+  createGroups: (count: number, notes: string | null) => send<{ id: number; groupNumber: number }[]>('POST', '/api/delivery-groups', { count, notes }),
+  updateGroupNotes: (id: number, notes: string | null) => send('PUT', `/api/delivery-groups/${id}`, { notes }),
   setGroupActive: (id: number, active: boolean) => send('POST', `/api/delivery-groups/${id}/${active ? 'activate' : 'deactivate'}`),
   deleteGroup: (id: number) => send('DELETE', `/api/delivery-groups/${id}`),
   groupCustomers: (group: string, search: string, page: number, pageSize: number, signal?: AbortSignal) =>
@@ -691,41 +696,6 @@ export const api = {
     send<MovePreview>('POST', '/api/delivery-groups/move/preview', { customerIds, targetGroupId }),
   move: (customerIds: number[], targetGroupId: number, reason: string | null) =>
     send<{ requested: number; changed: number; alreadyInGroup: number }>('POST', '/api/delivery-groups/move', { customerIds, targetGroupId, reason }),
-
-  imports: (signal?: AbortSignal) => get<ImportBatch[]>('/api/imports', signal),
-  upload: async (file: File): Promise<UploadResult> => {
-    const form = new FormData();
-    form.append('file', file);
-    const response = await call('/api/imports', { method: 'POST', body: form });
-    return (await response.json()) as UploadResult;
-  },
-  importDetail: (id: number, signal?: AbortSignal) => get<ImportDetail>(`/api/imports/${id}`, signal),
-  importRows: (id: number, filter: RowFilter, page: number, pageSize: number, signal?: AbortSignal) =>
-    get<Paged<ImportRow>>(`/api/imports/${id}/rows${query({ ...filter, page, pageSize })}`, signal),
-  classification: (id: number, signal?: AbortSignal) => get<ImportClassification>(`/api/imports/${id}/classification`, signal),
-  planMappings: (id: number, signal?: AbortSignal) => get<PlanMapping[]>(`/api/imports/${id}/plan-mappings`, signal),
-  updatePlanMapping: (id: number, mappingId: number, planId: number | null, pricingTierId: number | null) =>
-    send('PUT', `/api/imports/${id}/plan-mappings/${mappingId}`, { planId, pricingTierId }),
-  setExcluded: (id: number, rowIds: number[], excluded: boolean) =>
-    send<{ updated: number }>('POST', `/api/imports/${id}/rows/exclusion`, { rowIds, excluded }),
-  importGroups: (id: number, signal?: AbortSignal) => get<ImportGroupSummary[]>(`/api/imports/${id}/groups`, signal),
-  createDraftGroup: (id: number, name: string, description: string | null) =>
-    send<{ key: string; name: string }>('POST', `/api/imports/${id}/groups`, { name, description }),
-  updateDraftGroup: (id: number, draftId: number, name: string, description: string | null) =>
-    send('PUT', `/api/imports/${id}/groups/${draftId}`, { name, description }),
-  deleteDraftGroup: (id: number, draftId: number) => send<{ unassigned: number }>('DELETE', `/api/imports/${id}/groups/${draftId}`),
-  previewAssignment: (id: number, selection: RowSelection, target: string | null) =>
-    send<AssignmentPreview>('POST', `/api/imports/${id}/assignments/preview`, { selection, target }),
-  assign: (id: number, selection: RowSelection, target: string | null) =>
-    send<{ updated: number }>('POST', `/api/imports/${id}/assignments`, { selection, target }),
-  suggest: (id: number) => send<SuggestionResult>('POST', `/api/imports/${id}/suggestions`),
-  previewSuggestions: (id: number, rowIds: number[] | null, onlyUnassigned: boolean) =>
-    send<AssignmentPreview>('POST', `/api/imports/${id}/suggestions/preview`, { rowIds, onlyUnassigned }),
-  applySuggestions: (id: number, rowIds: number[] | null, onlyUnassigned: boolean) =>
-    send<{ updated: number }>('POST', `/api/imports/${id}/suggestions/apply`, { rowIds, onlyUnassigned }),
-  review: (id: number, signal?: AbortSignal) => get<ImportReview>(`/api/imports/${id}/review`, signal),
-  commit: (id: number) => send<CommitResult>('POST', `/api/imports/${id}/commit`),
-  cancelImport: (id: number) => send('POST', `/api/imports/${id}/cancel`),
 
   authState: () => get<AuthState>('/api/auth/state'),
   login: (userName: string, password: string) => send<SignedInUser>('POST', '/api/auth/login', { userName, password }),
@@ -738,15 +708,44 @@ export const api = {
     get<Paged<CustomerListItem>>(`/api/customers${query({ ...filter, page, pageSize })}`, signal),
   customerFilterOptions: (signal?: AbortSignal) => get<CustomerFilterOptions>('/api/customers/filter-options', signal),
   customer: (id: number, signal?: AbortSignal) => get<CustomerDetail>(`/api/customers/${id}`, signal),
+  createCustomer: (request: CreateCustomerRequest) => send<CreateCustomerResult>('POST', '/api/customers', request),
   updateCustomer: (id: number, request: UpdateCustomerRequest) => send<UpdateCustomerResult>('PUT', `/api/customers/${id}`, request),
+  schedule: (frequencyId: number, startDate: string, signal?: AbortSignal) =>
+    get<SchedulePreview>(`/api/customers/schedule${query({ frequencyId, startDate })}`, signal),
+  /** Pauses the day for every package running on it. */
+  pauseCustomer: (id: number, date: string, reason: string | null) => send<PauseResult>('POST', `/api/customers/${id}/pauses`, { date, reason }),
+  addPackage: (customerId: number, request: SavePackageRequest) => send<PackageSaved>('POST', `/api/customers/${customerId}/packages`, request),
+  updatePackage: (packageId: number, request: UpdatePackageRequest) => send<PackageSaved>('PUT', `/api/customers/packages/${packageId}`, request),
+  deletePackage: (packageId: number) => send('DELETE', `/api/customers/packages/${packageId}`),
+  addNote: (customerId: number, text: string) => send<{ id: number }>('POST', `/api/customers/${customerId}/notes`, { text }),
+  updateNote: (noteId: number, text: string) => send('PUT', `/api/customers/notes/${noteId}`, { text }),
+  deleteNote: (noteId: number) => send('DELETE', `/api/customers/notes/${noteId}`),
   previewCustomerGroup: (customerIds: number[], groupId: number | null) =>
     send<MovePreview>('POST', '/api/customers/group/preview', { customerIds, groupId }),
   changeCustomerGroup: (customerIds: number[], groupId: number | null, reason: string | null) =>
     send<BulkResult>('POST', '/api/customers/group', { customerIds, groupId, reason }),
-  exportCustomers: (scope: ExportScope, filter: CustomerFilter, ids: number[] | null) =>
-    download('/api/customers/export', { scope, filter, ids }),
+  locateCustomers: (ids: number[] | null) => send<{ queued: number }>('POST', '/api/customers/locate', { ids }),
+  exportCustomers: (request: ExportRequest) => download('/api/customers/export', request),
+
+  dictionaries: (signal?: AbortSignal) => get<DictionaryOptions>('/api/dictionaries', signal),
+  dictionaryEntries: (type: DictionaryType, signal?: AbortSignal) => get<DictionaryEntry[]>(`/api/dictionaries/${type}`, signal),
+  createDictionaryEntry: (type: DictionaryType, entry: SaveDictionaryEntry) => send<DictionaryEntry>('POST', `/api/dictionaries/${type}`, entry),
+  updateDictionaryEntry: (id: number, entry: SaveDictionaryEntry) => send<DictionaryEntry>('PUT', `/api/dictionaries/entries/${id}`, entry),
+  deleteDictionaryEntry: (id: number) => send('DELETE', `/api/dictionaries/entries/${id}`),
+  reorderDictionary: (type: DictionaryType, ids: number[]) => send('PUT', `/api/dictionaries/${type}/order`, { ids }),
 
   settings: (signal?: AbortSignal) => get<AppSettings>('/api/settings', signal),
+  deliveryArea: (signal?: AbortSignal) => get<ServiceArea>('/api/settings/delivery-area', signal),
+  saveDeliveryArea: (city: string, state: string | null) => send<ServiceArea>('PUT', '/api/settings/delivery-area', { city, state }),
+
+  classificationMap: (statuses: string[], signal?: AbortSignal) =>
+    get<MapData>(`/api/classification/map${query({ statuses: statuses.join(',') })}`, signal),
+  /** auto: find the natural number of location clusters (groupCount is then ignored). */
+  suggestGroups: (groupCount: number, auto: boolean, statuses: string[], balance: boolean, usePincodeForUnlocated: boolean) =>
+    send<Suggestion>('POST', '/api/classification/suggest', { groupCount, auto, statuses, balance, usePincodeForUnlocated }),
+  evaluateDraft: (assignments: DraftAssignment[]) => send<DraftEvaluation>('POST', '/api/classification/evaluate', { assignments }),
+  applyDraft: (assignments: DraftAssignment[], reason: string | null) =>
+    send<ApplyResult>('POST', '/api/classification/apply', { assignments, reason }),
   users: (signal?: AbortSignal) => get<AppUser[]>('/api/users', signal),
   createUser: (userName: string, displayName: string, role: string, password: string) =>
     send<AppUser>('POST', '/api/users', { userName, displayName, role, password }),
@@ -755,8 +754,4 @@ export const api = {
   audit: (params: { entityType?: string; action?: string; search?: string }, page: number, pageSize: number, signal?: AbortSignal) =>
     get<Paged<AuditEntry>>(`/api/audit${query({ ...params, page, pageSize })}`, signal),
   auditActions: (signal?: AbortSignal) => get<string[]>('/api/audit/actions', signal),
-  setPlanStatus: (id: number, active: boolean) => send('PUT', `/api/catalogue/plans/${id}/status`, { active }),
-  planAliases: (signal?: AbortSignal) => get<PlanAlias[]>('/api/catalogue/plan-aliases', signal),
-  deletePlanAlias: (id: number) => send('DELETE', `/api/catalogue/plan-aliases/${id}`),
-  resyncCatalogue: () => send<CatalogueSeedResult>('POST', '/api/catalogue/resync'),
 };

@@ -9,8 +9,6 @@ services:
     healthCheckPath: /api/health     # does not touch the database, so Neon can sleep
     autoDeploy: true
     envVars:
-      - key: Database__Provider
-        value: PostgreSQL
       - key: Database__ConnectionString
         sync: false                  # paste the Neon connection string when Render asks (kept secret)
       - key: ForwardedHeaders__TrustAllProxies

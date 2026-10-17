@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 // ---------- Toasts ----------
@@ -57,7 +58,9 @@ export function Modal({ title, onClose, children, footer, wide }: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // Rendered on <body>: a dialog opened from inside the top bar (which uses backdrop-filter) or any other element that creates
+  // a containing block would otherwise be positioned and clipped relative to that element instead of the window.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-header">
@@ -69,7 +72,8 @@ export function Modal({ title, onClose, children, footer, wide }: {
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -16,23 +16,24 @@ COPY Fitzobit.sln ./
 COPY src/Fitzobit.Domain/Fitzobit.Domain.csproj src/Fitzobit.Domain/
 COPY src/Fitzobit.Application/Fitzobit.Application.csproj src/Fitzobit.Application/
 COPY src/Fitzobit.Infrastructure/Fitzobit.Infrastructure.csproj src/Fitzobit.Infrastructure/
-COPY src/Fitzobit.Infrastructure.PostgreSql/Fitzobit.Infrastructure.PostgreSql.csproj src/Fitzobit.Infrastructure.PostgreSql/
 COPY src/Fitzobit.Web/Fitzobit.Web.csproj src/Fitzobit.Web/
 RUN dotnet restore src/Fitzobit.Web/Fitzobit.Web.csproj
 COPY src/ src/
-COPY Fitzobit_WhatsApp_Catalogue.xlsx ./
 COPY --from=ui /src/src/Fitzobit.Web/wwwroot src/Fitzobit.Web/wwwroot
 RUN dotnet publish src/Fitzobit.Web/Fitzobit.Web.csproj -c Release -o /app --no-restore
 
 # 3. Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+# PDF exports need a TrueType font (the slim image has none): Liberation Sans, metric-compatible with Arial.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app ./
 # Small instances (Render free: 512 MB, 0.1 CPU): workstation GC keeps memory low.
 ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_gcServer=0 \
     DOTNET_GCHeapHardLimitPercent=0x4B \
-    Fitzobit__BasePath=/app \
     PORT=10000
 USER app
 EXPOSE 10000

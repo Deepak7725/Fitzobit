@@ -1,6 +1,7 @@
 using Fitzobit.Application.Customers;
 using Fitzobit.Application.DeliveryGroups;
-using Fitzobit.Application.Imports;
+using Fitzobit.Application.Geocoding;
+using Fitzobit.Application.Common;
 using Fitzobit.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,23 +11,24 @@ namespace Fitzobit.Web.Controllers;
 /// <param name="GroupId">Target delivery group, or null to remove the customers from their group.</param>
 public sealed record ChangeGroupRequest(List<int> CustomerIds, int? GroupId, string? Reason);
 
-/// <param name="Filter">The View Data filters and sort (used for "Filtered", and for row order in every scope).</param>
-/// <param name="Ids">Customer ids for "Selected".</param>
-public sealed record ExportRequest(ExportScope Scope, CustomerFilter? Filter, List<int>? Ids);
+/// <param name="Ids">Customers to look up again; empty = every customer whose location is unavailable.</param>
+public sealed record LocateRequest(List<int>? Ids);
 
-/// <summary>View Data: server-side search/filter/sort/paging, customer details, edits, group changes and Excel export.</summary>
+/// <summary>Customers: server-side search/filter/sort/paging, details, create and edit, packages, notes, pauses, group changes and Excel/PDF export.</summary>
 [ApiController]
 [Route("api/customers")]
 [Authorize(Policy = Policies.Operate)]
 public sealed class CustomersController(
     CustomerQueryService queries,
     CustomerCommandService commands,
+    CustomerPauseService pauses,
+    CustomerPackageService packages,
+    CustomerNoteService notes,
+    DeliveryScheduleService schedule,
     CustomerExportService export,
     DeliveryGroupService groups,
     DeliveryGroupAssignmentService assignments) : ControllerBase
 {
-    private const string ExcelContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
     [HttpGet]
     public Task<PagedResult<CustomerListItemDto>> List([FromQuery] CustomerFilter filter, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
         CancellationToken ct = default) => queries.ListAsync(filter, page, pageSize, ct);
@@ -37,8 +39,53 @@ public sealed class CustomersController(
     [HttpGet("{id:int}")]
     public Task<CustomerDetailDto> Detail(int id, CancellationToken ct) => queries.GetDetailAsync(id, ct);
 
+    [HttpPost]
+    public Task<CreateCustomerResult> Create(CreateCustomerRequest request, CancellationToken ct) => commands.CreateAsync(request, ct);
+
     [HttpPut("{id:int}")]
     public Task<UpdateCustomerResult> Update(int id, UpdateCustomerRequest request, CancellationToken ct) => commands.UpdateAsync(id, request, ct);
+
+    /// <summary>The end date a package would have: the start date plus the frequency's delivery days (Sundays excluded).</summary>
+    [HttpGet("schedule")]
+    public Task<SchedulePreviewDto> Schedule([FromQuery] int frequencyId, [FromQuery] DateOnly startDate, CancellationToken ct) =>
+        schedule.PreviewAsync(frequencyId, startDate, ct);
+
+    /// <summary>Pauses one delivery day for every package running that day; each end date moves to the next delivery day.</summary>
+    [HttpPost("{id:int}/pauses")]
+    public Task<PauseResultDto> Pause(int id, PauseCustomerRequest request, CancellationToken ct) => pauses.PauseAsync(id, request, ct);
+
+    [HttpPost("{id:int}/packages")]
+    public Task<PackageSavedDto> AddPackage(int id, SavePackageRequest request, CancellationToken ct) => packages.AddAsync(id, request, ct);
+
+    [HttpPut("packages/{packageId:int}")]
+    public Task<PackageSavedDto> UpdatePackage(int packageId, UpdatePackageRequest request, CancellationToken ct) =>
+        packages.UpdateAsync(packageId, request, ct);
+
+    /// <summary>Only before the package's first delivery day.</summary>
+    [HttpDelete("packages/{packageId:int}")]
+    public async Task<IActionResult> DeletePackage(int packageId, CancellationToken ct)
+    {
+        await packages.DeleteAsync(packageId, ct);
+        return NoContent();
+    }
+
+    [HttpPost("{id:int}/notes")]
+    public async Task<object> AddNote(int id, SaveNoteRequest request, CancellationToken ct) => new { Id = await notes.AddAsync(id, request, ct) };
+
+    /// <summary>The writer of the note or an Admin.</summary>
+    [HttpPut("notes/{noteId:int}")]
+    public async Task<IActionResult> UpdateNote(int noteId, SaveNoteRequest request, CancellationToken ct)
+    {
+        await notes.UpdateAsync(noteId, request, ct);
+        return NoContent();
+    }
+
+    [HttpDelete("notes/{noteId:int}")]
+    public async Task<IActionResult> DeleteNote(int noteId, CancellationToken ct)
+    {
+        await notes.DeleteAsync(noteId, ct);
+        return NoContent();
+    }
 
     [HttpPost("group/preview")]
     public Task<MovePreviewDto> PreviewGroupChange(ChangeGroupRequest request, CancellationToken ct) =>
@@ -53,11 +100,17 @@ public sealed class CustomersController(
             : assignments.UnassignManyAsync(request.CustomerIds ?? [],
                 string.IsNullOrWhiteSpace(request.Reason) ? "Removed from group by manager" : request.Reason.Trim(), ct);
 
+    /// <summary>Queues a new location lookup (the background geocoder handles it within seconds).</summary>
+    [HttpPost("locate")]
+    public async Task<object> Locate(LocateRequest request, [FromServices] CustomerGeocodingService geocoding, CancellationToken ct) =>
+        new { Queued = await geocoding.RequestAsync(request.Ids, ct) };
+
+    /// <summary>Excel or PDF with exactly the requested rows (all / filtered / selected / current page) and columns.</summary>
     [HttpPost("export")]
-    public async Task<IActionResult> Export(ExportRequest request, CancellationToken ct)
+    public async Task<IActionResult> Export(CustomerExportRequest request, CancellationToken ct)
     {
-        var file = await export.ExportAsync(request.Scope, request.Filter ?? new CustomerFilter(), request.Ids, ct);
+        var file = await export.ExportAsync(request, ct);
         Response.Headers["X-Export-Rows"] = file.RowCount.ToString();
-        return File(file.Content, ExcelContentType, file.FileName);
+        return File(file.Content, file.ContentType, file.FileName);
     }
 }

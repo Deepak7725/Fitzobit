@@ -1,19 +1,34 @@
 import { useState } from 'react';
-import { Ban, Eye, Pencil, Plus, RotateCcw, Search, Trash2, UserX, UsersRound } from 'lucide-react';
-import { api, type DeliveryGroup, type MovePreview } from '../api';
+import { Link } from 'react-router-dom';
+import { Ban, Eye, Map as MapIcon, MapPin, Pencil, Plus, RotateCcw, Search, Trash2, UserX, UsersRound } from 'lucide-react';
+import { api, type CountItem, type DeliveryGroup, type MovePreview } from '../api';
 import { useApi, useDebounced } from '../hooks';
 import { formatDateTime } from '../format';
-import { Badge, Card, EmptyState, ErrorPanel, Loading, PageHeader, StatCard } from '../components/ui';
+import { Badge, Card, Chips, EmptyState, ErrorPanel, Loading, PageHeader, StatCard } from '../components/ui';
 import { ConfirmDialog, Modal, Pagination, useToast } from '../components/feedback';
-import { Chips } from './import/GroupsStep';
+import { GroupPill, groupColor } from '../components/groups';
 import BarChart from '../components/BarChart';
 
-type View = { key: string; name: string };
+type View = { key: string; name: string; groupNumber: number | null };
+
+function Counts({ items }: { items: CountItem[] }) {
+  if (items.length === 0) return <span className="muted">—</span>;
+  return (
+    <div className="count-chips">
+      {items.map((i) => (
+        <span key={i.label} className="tag">
+          {i.label} <strong>{i.count}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export default function DeliveryGroupsPage() {
   const toast = useToast();
   const overview = useApi(api.deliveryGroups);
-  const [editing, setEditing] = useState<DeliveryGroup | 'new' | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<DeliveryGroup | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; messages: string[]; label: string; danger?: boolean; run: () => Promise<void> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<View | null>(null);
@@ -40,11 +55,16 @@ export default function DeliveryGroupsPage() {
     <>
       <PageHeader
         title="Delivery Groups"
-        subtitle="Manager-defined groups. A group can cover several locations, pincodes and plans. Location and delivery group are separate."
+        subtitle="Numbered delivery groups. A group can cover customers from different streets, areas and pincodes; groups are formed for delivery efficiency."
         actions={
-          <button className="btn btn-primary" onClick={() => setEditing('new')}>
-            <Plus size={16} /> Add group
-          </button>
+          <>
+            <Link to="/map" className="btn btn-secondary">
+              <MapIcon size={16} /> Delivery classification
+            </Link>
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>
+              <Plus size={16} /> Create groups
+            </button>
+          </>
         }
       />
 
@@ -54,31 +74,28 @@ export default function DeliveryGroupsPage() {
       {overview.data && (
         <>
           <div className="stat-grid">
-            <StatCard tone="teal" icon={<UsersRound size={20} />} label="Total groups" value={groups.length} hint={`${active.length} active · ${groups.length - active.length} inactive`} />
+            <StatCard tone="teal" icon={<UsersRound size={20} />} label="Groups" value={groups.length} hint={`${active.length} active · ${groups.length - active.length} inactive`} />
             <StatCard tone="blue" icon={<UsersRound size={20} />} label="Customers" value={overview.data.totalCustomers.toLocaleString('en-IN')} />
-            <StatCard tone="rose" icon={<UserX size={20} />} label="Unassigned customers" value={overview.data.unassignedCustomers.toLocaleString('en-IN')} />
             <StatCard
               tone="violet"
               icon={<UsersRound size={20} />}
               label="Assigned customers"
               value={(overview.data.totalCustomers - overview.data.unassignedCustomers).toLocaleString('en-IN')}
             />
+            <StatCard tone="rose" icon={<UserX size={20} />} label="Unassigned customers" value={overview.data.unassignedCustomers.toLocaleString('en-IN')} />
           </div>
 
           {groups.length > 0 && overview.data.totalCustomers > 0 && (
-            <Card title="Group distribution" subtitle="Active customers per delivery group. Select a bar to see those customers.">
+            <Card title="Group distribution" subtitle="Customers per delivery group. Select a bar to see those customers in the customer list.">
               <BarChart
                 label="Customers per delivery group"
                 items={[
-                  ...[...groups]
-                    .filter((g) => g.activeCustomerCount > 0 || g.status === 'Active')
-                    .sort((a, b) => b.activeCustomerCount - a.activeCustomerCount || a.name.localeCompare(b.name))
-                    .map((g) => ({ key: String(g.id), label: g.name, count: g.activeCustomerCount })),
+                  ...groups.filter((g) => g.activeCustomerCount > 0 || g.status === 'Active').map((g) => ({ key: String(g.id), label: g.name, count: g.activeCustomerCount })),
                   ...(overview.data.unassignedCustomers > 0 ? [{ key: 'none', label: 'No group', count: overview.data.unassignedCustomers }] : []),
                 ]}
                 total={overview.data.totalCustomers}
                 linkFor={(i) => `/data?group=${i.key}`}
-                limit={12}
+                limit={20}
               />
             </Card>
           )}
@@ -88,10 +105,10 @@ export default function DeliveryGroupsPage() {
               <EmptyState
                 icon={<UsersRound size={22} />}
                 title="No delivery groups created"
-                message="Create a group to organize deliveries."
+                message="Create the number of groups you deliver with, then assign customers on the Delivery Classification map or from the customer list."
                 action={
-                  <button className="btn btn-primary" onClick={() => setEditing('new')}>
-                    <Plus size={16} /> Add group
+                  <button className="btn btn-primary" onClick={() => setCreating(true)}>
+                    <Plus size={16} /> Create groups
                   </button>
                 }
               />
@@ -102,9 +119,11 @@ export default function DeliveryGroupsPage() {
                     <tr>
                       <th>Group</th>
                       <th className="num">Customers</th>
+                      <th>Customer status</th>
                       <th>Pincodes</th>
-                      <th>Locations</th>
-                      <th>Plans</th>
+                      <th>Areas</th>
+                      <th>Meal types</th>
+                      <th>Frequencies</th>
                       <th>Status</th>
                       <th aria-label="Actions" />
                     </tr>
@@ -113,32 +132,50 @@ export default function DeliveryGroupsPage() {
                     {groups.map((g) => (
                       <tr key={g.id} className={view?.key === String(g.id) ? 'row-selected' : ''}>
                         <td>
-                          <div className="item-name">{g.name}</div>
-                          {g.description && <div className="item-sub">{g.description}</div>}
+                          <GroupPill groupNumber={g.groupNumber} />
+                          {g.notes && <div className="item-sub group-notes">{g.notes}</div>}
                           <div className="item-sub">
                             Created {formatDateTime(g.createdAt)}
                             {g.createdBy ? ` by ${g.createdBy}` : ''}
                           </div>
                         </td>
-                        <td className="num strong">{g.activeCustomerCount.toLocaleString('en-IN')}</td>
+                        <td className="num">
+                          <div className="strong">{g.activeCustomerCount.toLocaleString('en-IN')}</div>
+                          {g.activeCustomerCount > 0 && (
+                            <div className="item-sub" title="Customers with a known location">
+                              <MapPin size={11} /> {g.locatedCount} located
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <Counts items={g.statusCounts} />
+                        </td>
                         <td>
                           <Chips values={g.pincodes} more={g.pincodeCount - g.pincodes.length} />
                         </td>
-                        <td>
-                          <div>{g.locationCount}</div>
-                          {g.localities.length > 0 && <div className="item-sub">{g.localities.join(', ')}</div>}
+                        <td className="small">
+                          {g.localities.length > 0 ? g.localities.join(', ') : <span className="muted">—</span>}
+                          {g.locationCount > 0 && <div className="item-sub">{g.locationCount} address(es)</div>}
                         </td>
                         <td>
-                          <Chips values={g.plans} more={g.planCount - g.plans.length} />
+                          <Counts items={g.mealTypes} />
+                        </td>
+                        <td>
+                          <Counts items={g.frequencies} />
                         </td>
                         <td>
                           <Badge tone={g.status === 'Active' ? 'success' : 'neutral'}>{g.status}</Badge>
                         </td>
                         <td className="actions-cell">
-                          <button className="icon-btn" title="View customers" aria-label={`View customers of ${g.name}`} onClick={() => setView({ key: String(g.id), name: g.name })}>
+                          <button
+                            className="icon-btn"
+                            title="View customers"
+                            aria-label={`View customers of ${g.name}`}
+                            onClick={() => setView({ key: String(g.id), name: g.name, groupNumber: g.groupNumber })}
+                          >
                             <Eye size={16} />
                           </button>
-                          <button className="icon-btn" title="Edit" aria-label={`Edit ${g.name}`} onClick={() => setEditing(g)}>
+                          <button className="icon-btn" title="Edit notes" aria-label={`Edit notes of ${g.name}`} onClick={() => setEditing(g)}>
                             <Pencil size={15} />
                           </button>
                           {g.status === 'Active' ? (
@@ -148,16 +185,16 @@ export default function DeliveryGroupsPage() {
                               aria-label={`Deactivate ${g.name}`}
                               onClick={() =>
                                 setConfirm({
-                                  title: `Deactivate “${g.name}”?`,
+                                  title: `Deactivate ${g.name}?`,
                                   messages:
                                     g.activeCustomerCount > 0
                                       ? [`It still has ${g.activeCustomerCount} customer(s). Move them to another group first.`]
-                                      : ['The group will no longer receive customers. You can reactivate it later.'],
+                                      : ['The group will no longer receive customers. Its number stays reserved; you can reactivate it later.'],
                                   label: 'Deactivate',
                                   danger: true,
                                   run: async () => {
                                     await api.setGroupActive(g.id, false);
-                                    toast(`“${g.name}” deactivated`);
+                                    toast(`${g.name} deactivated`);
                                   },
                                 })
                               }
@@ -171,7 +208,7 @@ export default function DeliveryGroupsPage() {
                               aria-label={`Reactivate ${g.name}`}
                               onClick={async () => {
                                 await api.setGroupActive(g.id, true);
-                                toast(`“${g.name}” reactivated`);
+                                toast(`${g.name} reactivated`);
                                 overview.reload();
                               }}
                             >
@@ -184,13 +221,13 @@ export default function DeliveryGroupsPage() {
                             aria-label={`Delete ${g.name}`}
                             onClick={() =>
                               setConfirm({
-                                title: `Delete “${g.name}”?`,
+                                title: `Delete ${g.name}?`,
                                 messages: ['Only groups that have never had customers can be deleted. Otherwise, deactivate the group.'],
                                 label: 'Delete',
                                 danger: true,
                                 run: async () => {
                                   await api.deleteGroup(g.id);
-                                  toast(`“${g.name}” deleted`);
+                                  toast(`${g.name} deleted`);
                                   if (view?.key === String(g.id)) setView(null);
                                 },
                               })
@@ -211,28 +248,30 @@ export default function DeliveryGroupsPage() {
                 <span>
                   <strong>{overview.data.unassignedCustomers.toLocaleString('en-IN')}</strong> customer(s) have no delivery group.
                 </span>
-                <button className="btn btn-secondary btn-sm" onClick={() => setView({ key: 'unassigned', name: 'Customers without a group' })}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setView({ key: 'unassigned', name: 'Customers without a group', groupNumber: null })}>
                   View &amp; assign
                 </button>
               </div>
             )}
           </Card>
 
-          {view && (
-            <GroupCustomersPanel
-              key={view.key}
-              view={view}
-              targets={active}
-              onClose={() => setView(null)}
-              onMoved={overview.reload}
-            />
-          )}
+          {view && <GroupCustomersPanel key={view.key} view={view} targets={active} onClose={() => setView(null)} onMoved={overview.reload} />}
         </>
       )}
 
+      {creating && (
+        <CreateGroupsModal
+          nextNumber={(groups.length === 0 ? 0 : Math.max(...groups.map((g) => g.groupNumber))) + 1}
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false);
+            overview.reload();
+          }}
+        />
+      )}
       {editing && (
-        <GroupFormModal
-          group={editing === 'new' ? null : editing}
+        <NotesModal
+          group={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -297,7 +336,15 @@ function GroupCustomersPanel({ view, targets, onClose, onMoved }: { view: View; 
 
   return (
     <Card
-      title={view.name}
+      title={
+        view.groupNumber != null ? (
+          <span className="title-with-swatch">
+            <span className="swatch" style={{ background: groupColor(view.groupNumber) }} /> {view.name}
+          </span>
+        ) : (
+          view.name
+        )
+      }
       subtitle={customers.data ? `${customers.data.total.toLocaleString('en-IN')} customer(s)` : undefined}
       actions={
         <button className="btn btn-secondary btn-sm" onClick={onClose}>
@@ -310,7 +357,7 @@ function GroupCustomersPanel({ view, targets, onClose, onMoved }: { view: View; 
           <Search size={16} />
           <input
             type="search"
-            placeholder="Search ID, name, phone, pincode…"
+            placeholder="Search ID, name, phone, address, pincode…"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -370,9 +417,11 @@ function GroupCustomersPanel({ view, targets, onClose, onMoved }: { view: View; 
                   <th>CustomerID</th>
                   <th>Name</th>
                   <th>Phone</th>
-                  <th>Location</th>
+                  <th>Address</th>
                   <th>Pincode</th>
-                  <th>Plan</th>
+                  <th>Meal type</th>
+                  <th>Status</th>
+                  <th>Location</th>
                   {view.key !== 'unassigned' && <th>In group since</th>}
                 </tr>
               </thead>
@@ -398,11 +447,13 @@ function GroupCustomersPanel({ view, targets, onClose, onMoved }: { view: View; 
                     <td>{c.customerName}</td>
                     <td>{c.phoneNumber}</td>
                     <td className="cell-wide">
-                      <div>{c.location}</div>
+                      <div>{c.address}</div>
                       {(c.locality || c.city) && <div className="item-sub">{[c.locality, c.city].filter(Boolean).join(' · ')}</div>}
                     </td>
                     <td>{c.pincode ?? '—'}</td>
-                    <td className="small">{c.planName ?? '—'}</td>
+                    <td className="small">{c.mealType ?? '—'}</td>
+                    <td className="small">{c.status}</td>
+                    <td className="small">{c.hasLocation ? 'Located' : <span className="muted">Unavailable</span>}</td>
                     {view.key !== 'unassigned' && <td className="small">{formatDateTime(c.assignedAt)}</td>}
                   </tr>
                 ))}
@@ -427,48 +478,105 @@ function GroupCustomersPanel({ view, targets, onClose, onMoved }: { view: View; 
   );
 }
 
-function GroupFormModal({ group, onClose, onSaved }: { group: DeliveryGroup | null; onClose: () => void; onSaved: () => void }) {
+function CreateGroupsModal({ nextNumber, onClose, onSaved }: { nextNumber: number; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [name, setName] = useState(group?.name ?? '');
-  const [description, setDescription] = useState(group?.description ?? '');
+  const [count, setCount] = useState('1');
+  const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const n = Number(count);
+  const valid = Number.isInteger(n) && n >= 1 && n <= 50;
 
   const save = async () => {
     setBusy(true);
+    setError(null);
     try {
-      if (group) await api.updateGroup(group.id, name, description || null);
-      else await api.createGroup(name, description || null);
-      toast(group ? 'Group updated' : `Group “${name.trim()}” created`);
+      const created = await api.createGroups(n, notes.trim() || null);
+      const numbers = created.map((g) => g.groupNumber);
+      toast(numbers.length === 1 ? `Group ${numbers[0]} created` : `Groups ${numbers[0]}–${numbers[numbers.length - 1]} created`);
       onSaved();
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not save the group', 'error');
-    } finally {
+      setError(e instanceof Error ? e.message : 'Could not create the groups');
       setBusy(false);
     }
   };
 
   return (
     <Modal
-      title={group ? 'Edit delivery group' : 'Add delivery group'}
+      title="Create delivery groups"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={save} disabled={busy || !valid}>
+            {busy ? 'Creating…' : valid && n > 1 ? `Create ${n} groups` : 'Create group'}
+          </button>
+        </>
+      }
+    >
+      <label className="field">
+        How many groups?
+        <input className="input" type="number" min={1} max={50} value={count} onChange={(e) => setCount(e.target.value)} autoFocus />
+        <small className="field-hint">
+          {valid
+            ? n === 1
+              ? `Group ${nextNumber} will be created.`
+              : `Groups ${nextNumber}–${nextNumber + n - 1} will be created.`
+            : 'Between 1 and 50.'}{' '}
+          Numbers are assigned automatically and never reused while a group exists.
+        </small>
+      </label>
+      <label className="field">
+        Notes (optional)
+        <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Route, timing or delivery person" maxLength={1000} />
+      </label>
+      {error && (
+        <div className="auth-error" role="alert">
+          {error}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function NotesModal({ group, onClose, onSaved }: { group: DeliveryGroup; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [notes, setNotes] = useState(group.notes ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.updateGroupNotes(group.id, notes.trim() || null);
+      toast(`${group.name} updated`);
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not save the notes', 'error');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`${group.name} notes`}
       onClose={onClose}
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={save} disabled={busy || !name.trim()}>
-            {group ? 'Save' : 'Create group'}
+          <button className="btn btn-primary" onClick={save} disabled={busy}>
+            Save
           </button>
         </>
       }
     >
       <label className="field">
-        <span>Group name</span>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Coimbatore North" maxLength={150} autoFocus />
-      </label>
-      <label className="field">
-        <span>Description (optional)</span>
-        <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Areas, route or timing notes" maxLength={1000} />
+        Notes
+        <textarea className="input textarea" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} autoFocus />
+        <small className="field-hint">Route, timing or delivery person. The group number itself cannot change.</small>
       </label>
     </Modal>
   );

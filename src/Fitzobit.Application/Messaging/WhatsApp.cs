@@ -71,7 +71,7 @@ public sealed class WhatsAppStatusService(IOptions<WhatsAppOptions> options, IFi
             o.IsConfigured ? "WhatsApp Business API is configured" : WhatsAppOptions.NotConfiguredMessage,
             o.ApiVersion,
             o.PhoneNumberId is { Length: > 4 } id ? new string('•', id.Length - 4) + id[^4..] : null,
-            ["Customer notifications", "Delivery reminders", "Plan reminders", "Subscription reminders", "Delivery-group notifications",
+            ["Customer notifications", "Delivery reminders", "Package end reminders", "Subscription reminders", "Delivery-group notifications",
              "Message templates", "Message history", "Delivery and read status"],
             byStatus.Sum(x => x.Count),
             byStatus.ToDictionary(x => x.Key.ToString(), x => x.Count));

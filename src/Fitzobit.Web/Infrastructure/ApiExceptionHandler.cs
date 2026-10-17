@@ -1,6 +1,8 @@
 using Fitzobit.Application.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Fitzobit.Web.Infrastructure;
 
@@ -16,6 +18,11 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, I
         {
             NotFoundException e => (StatusCodes.Status404NotFound, "Not found", e.Message),
             BusinessRuleException e => (StatusCodes.Status409Conflict, "Request could not be completed", e.Message),
+            // Two people saved the same record at the same moment: the second save is refused, never silently merged.
+            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Request could not be completed",
+                "Someone else changed this record at the same time. Reload it and try again."),
+            DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } } =>
+                (StatusCodes.Status409Conflict, "Request could not be completed", "This change conflicts with data saved at the same time. Reload and try again."),
             BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } =>
                 (StatusCodes.Status413PayloadTooLarge, "Too large", "The upload is larger than the allowed size."),
             OperationCanceledException when httpContext.RequestAborted.IsCancellationRequested =>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
+import { api, type DictionaryOptions } from './api';
 
 export interface ApiState<T> {
   data: T | null;
@@ -49,4 +50,12 @@ export function useDebounced<T>(value: T, delayMs = 300): T {
     return () => clearTimeout(handle);
   }, [value, delayMs]);
   return debounced;
+}
+
+/**
+ * Active drop-down values (preference, meal type, frequency, status) from the database. Never hard-code these lists:
+ * administrators manage them in Settings → Dropdown values.
+ */
+export function useDictionaries(): ApiState<DictionaryOptions> {
+  return useApi(api.dictionaries);
 }

@@ -7,19 +7,17 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Fitzobit.Tests.Web;
 
 /// <summary>
-/// The real web host (production settings: secure cookies, HSTS, no Swagger) on its own temporary SQLite file.
-/// The catalogue is seeded from the real workbook on startup, exactly as in the running app.
+/// The real web host (production settings: secure cookies, HSTS, no Swagger) on its own temporary PostgreSQL database,
+/// migrated on startup exactly as in the running app.
 /// </summary>
 public sealed class WebTestHost : WebApplicationFactory<Program>
 {
-    private readonly string _databaseFile = Path.Combine(Path.GetTempPath(), $"fitzobit-web-test-{Guid.NewGuid():N}.db");
-    private readonly PostgresTestDatabase? _postgres = PostgresTestDatabase.IsEnabled ? new PostgresTestDatabase() : null;
+    private readonly PostgresTestDatabase _postgres = new();
     private readonly bool _allowRemoteSetup;
     private readonly bool _loopbackClient;
     private readonly string? _setupCode;
@@ -35,13 +33,9 @@ public sealed class WebTestHost : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Production");
-        if (_postgres is not null)
-        {
-            builder.UseSetting("Database:Provider", "PostgreSQL");
-            builder.UseSetting("Database:ConnectionString", _postgres.ConnectionString);
-        }
-        else builder.UseSetting("Database:ConnectionString", $"Data Source={_databaseFile}");
-        builder.UseSetting("CatalogueSeed:FilePath", TestPaths.CatalogueWorkbook);
+        builder.UseSetting("Database:ConnectionString", _postgres.ConnectionString);
+        builder.UseSetting("Geocoding:Provider", "None");        // never call a real geocoder from tests
+        builder.UseSetting("Geocoding:BackgroundEnabled", "false");
         builder.UseSetting("Auth:AllowRemoteSetup", _allowRemoteSetup ? "true" : "false");
         if (_setupCode is not null) builder.UseSetting("Auth:SetupCode", _setupCode);
         builder.ConfigureTestServices(services =>
@@ -77,10 +71,7 @@ public sealed class WebTestHost : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        _postgres?.Dispose();
-        SqliteConnection.ClearAllPools();
-        foreach (var file in new[] { _databaseFile, _databaseFile + "-wal", _databaseFile + "-shm" })
-            try { File.Delete(file); } catch (IOException) { }
+        _postgres.Dispose();
     }
 }
 
@@ -119,6 +110,7 @@ public sealed class ApiClient(HttpClient http)
     public Task<HttpResponseMessage> GetAsync(string url) => Http.GetAsync(url);
     public Task<HttpResponseMessage> PostAsync(string url, object body) => Http.PostAsJsonAsync(url, body);
     public Task<HttpResponseMessage> PutAsync(string url, object body) => Http.PutAsJsonAsync(url, body);
+    public Task<HttpResponseMessage> DeleteAsync(string url) => Http.DeleteAsync(url);
 
     public static async Task<string?> DetailAsync(HttpResponseMessage response) =>
         (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString();
@@ -131,7 +123,7 @@ public sealed class ApiClient(HttpClient http)
 public sealed class ThrowingTestController : ControllerBase
 {
     [HttpGet]
-    public IActionResult Get() => throw new InvalidOperationException("Secret internal detail: Data Source=C:\\private\\fitzobit.db");
+    public IActionResult Get() => throw new InvalidOperationException("Secret internal detail: Host=db.internal;Password=secret-password");
 }
 
 public static class HttpAssert

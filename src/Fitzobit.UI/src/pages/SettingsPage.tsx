@@ -1,38 +1,21 @@
-import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  ArrowRight,
-  CheckCircle2,
-  Database,
-  Download,
-  FileSpreadsheet,
-  MapPin,
-  MessageCircle,
-  RefreshCw,
-  ShieldCheck,
-  Upload,
-  UserRound,
-  UsersRound,
-  XCircle,
-} from 'lucide-react';
-import { api, type AppSettings, type CatalogueSeedResult } from '../api';
+import { ArrowRight, CheckCircle2, Database, Download, MapPin, MessageCircle, ShieldCheck, UserRound, UsersRound, XCircle } from 'lucide-react';
+import { api, type AppSettings } from '../api';
 import { useApi } from '../hooks';
 import { useAuth } from '../auth';
 import { formatBytes, formatNumber } from '../format';
 import { Badge, Card, ErrorPanel, Loading, PageHeader } from '../components/ui';
-import { ConfirmDialog, useToast } from '../components/feedback';
 import UsersTab from './settings/UsersTab';
-import PlansTab from './settings/PlansTab';
+import DictionariesTab from './settings/DictionariesTab';
+import DeliveryAreaCard from './settings/DeliveryAreaCard';
 import AuditTab from './settings/AuditTab';
 
 const TABS = [
   { key: 'general', label: 'General' },
+  { key: 'dropdowns', label: 'Dropdown values', admin: true },
   { key: 'users', label: 'Users', admin: true },
-  { key: 'plans', label: 'Plans', admin: true },
-  { key: 'catalogue', label: 'Catalogue' },
   { key: 'groups', label: 'Delivery Groups' },
   { key: 'whatsapp', label: 'WhatsApp' },
-  { key: 'import', label: 'Import Settings' },
   { key: 'export', label: 'Export Settings' },
   { key: 'audit', label: 'Audit Log', admin: true },
 ] as const;
@@ -51,7 +34,7 @@ export default function SettingsPage() {
     <>
       <PageHeader
         title="Settings"
-        subtitle={isAdmin ? 'Application, users, plans and data sources.' : 'Application and data-source information. Administrative settings are managed by an administrator.'}
+        subtitle={isAdmin ? 'Application, drop-down values, users and data.' : 'Application information. Drop-down values and users are managed by an administrator.'}
       />
       <div className="tabs tabs-scroll" role="tablist">
         {tabs.map((t) => (
@@ -63,14 +46,12 @@ export default function SettingsPage() {
 
       {settings.error && <ErrorPanel message={settings.error} onRetry={settings.reload} />}
       {tab === 'users' && <UsersTab />}
-      {tab === 'plans' && <PlansTab />}
+      {tab === 'dropdowns' && <DictionariesTab />}
       {tab === 'audit' && <AuditTab />}
       {tab === 'groups' && <GroupsTab settings={s} />}
-      {!['users', 'plans', 'audit', 'groups'].includes(tab) && settings.loading && !s && <Loading />}
+      {!['users', 'dropdowns', 'audit', 'groups'].includes(tab) && settings.loading && !s && <Loading />}
       {s && tab === 'general' && <GeneralTab settings={s} />}
-      {s && tab === 'catalogue' && <CatalogueTab settings={s} onChanged={settings.reload} />}
       {s && tab === 'whatsapp' && <WhatsAppTab settings={s} />}
-      {s && tab === 'import' && <ImportTab settings={s} />}
       {s && tab === 'export' && <ExportTab settings={s} />}
     </>
   );
@@ -81,6 +62,7 @@ function GeneralTab({ settings }: { settings: AppSettings }) {
   return (
     <div className="grid-2">
       <div className="stack">
+        <DeliveryAreaCard />
         <Card title={<><UserRound size={18} /> Signed in</>}>
           <dl className="facts facts-wide">
             <dt>Name</dt>
@@ -131,9 +113,9 @@ function SystemCard() {
           <dd>
             <Badge tone="info">{d.databaseProvider}</Badge>
           </dd>
-          <dt>Database file</dt>
+          <dt>Database</dt>
           <dd>
-            <code className="code wrap">{d.databaseFile ?? '—'}</code>
+            <code className="code wrap">{d.database}</code>
           </dd>
           <dt>Size</dt>
           <dd>{formatBytes(d.databaseSizeBytes)}</dd>
@@ -174,97 +156,6 @@ function SystemCard() {
   );
 }
 
-function CatalogueTab({ settings, onChanged }: { settings: AppSettings; onChanged: () => void }) {
-  const { isAdmin } = useAuth();
-  const toast = useToast();
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<CatalogueSeedResult | null>(null);
-
-  const resync = async () => {
-    setBusy(true);
-    try {
-      const r = await api.resyncCatalogue();
-      setResult(r);
-      toast(r.skipped ? `Re-sync skipped: ${r.skipReason}` : 'Catalogue re-synced from the workbook.', r.skipped ? 'error' : 'success');
-      onChanged();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Re-sync failed.', 'error');
-    } finally {
-      setBusy(false);
-      setConfirming(false);
-    }
-  };
-
-  return (
-    <Card
-      title={<><FileSpreadsheet size={18} /> Catalogue source</>}
-      subtitle="Plans and prices come from the Fitzobit WhatsApp catalogue workbook. Values are copied as published; inconsistencies are flagged, never corrected."
-      actions={
-        isAdmin && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setConfirming(true)} disabled={busy || !settings.catalogue.exists}>
-            <RefreshCw size={14} /> {busy ? 'Re-syncing…' : 'Re-sync now'}
-          </button>
-        )
-      }
-    >
-      <dl className="facts facts-wide">
-        <dt>Workbook</dt>
-        <dd>
-          <code className="code">{settings.catalogue.fileName}</code>
-        </dd>
-        <dt>Status</dt>
-        <dd>
-          {settings.catalogue.exists ? (
-            <Badge tone="success" icon={<CheckCircle2 size={13} />}>
-              Found
-            </Badge>
-          ) : (
-            <Badge tone="danger" icon={<XCircle size={13} />}>
-              Not found
-            </Badge>
-          )}
-        </dd>
-        <dt>Sync</dt>
-        <dd>{settings.catalogue.syncOnStartup ? 'Synced every time the app starts (idempotent)' : 'Automatic sync is turned off'}</dd>
-      </dl>
-      {result && !result.skipped && (
-        <div className="info-box" style={{ marginTop: 16 }}>
-          <h4>Last re-sync</h4>
-          <ul>
-            <li>
-              Items: {result.itemsCreated} created, {result.itemsUpdated} updated, {result.itemsUnchanged} unchanged
-            </li>
-            <li>
-              Pricing tiers: {result.tiersCreated} created, {result.tiersUpdated} updated, {result.tiersRemoved} removed
-            </li>
-            <li>Plans created: {result.plansCreated}</li>
-            {result.itemsNotInSource > 0 && <li>{result.itemsNotInSource} item(s) no longer in the workbook were kept</li>}
-          </ul>
-        </div>
-      )}
-      <p className="footnote">
-        <Link to="/catalogue" className="link">
-          Open Catalogue / Plans <ArrowRight size={13} />
-        </Link>
-      </p>
-      {confirming && (
-        <ConfirmDialog
-          title="Re-sync the catalogue?"
-          messages={[
-            `Items and pricing tiers are updated from ${settings.catalogue.fileName}.`,
-            'Customers, plans already assigned and delivery groups are not changed.',
-          ]}
-          confirmLabel="Re-sync"
-          busy={busy}
-          onConfirm={resync}
-          onCancel={() => setConfirming(false)}
-        />
-      )}
-    </Card>
-  );
-}
-
 function GroupsTab({ settings }: { settings: AppSettings | null }) {
   const groups = useApi(api.deliveryGroups);
   const g = groups.data;
@@ -296,7 +187,7 @@ function GroupsTab({ settings }: { settings: AppSettings | null }) {
           </dl>
         )}
       </Card>
-      <Card title={<><MapPin size={18} /> Location recognition</>} subtitle="Used to read pincodes, localities and cities from customer locations (appsettings.json).">
+      <Card title={<><MapPin size={18} /> Location recognition</>} subtitle="Used to read localities and cities from customer addresses (appsettings.json).">
         {settings ? (
           <dl className="facts facts-wide">
             <dt>Known cities</dt>
@@ -378,43 +269,27 @@ function WhatsAppTab({ settings }: { settings: AppSettings }) {
   );
 }
 
-function ImportTab({ settings }: { settings: AppSettings }) {
-  return (
-    <Card title={<><Upload size={18} /> Import settings</>} subtitle="Limits and checks applied to every customer Excel upload.">
-      <dl className="facts facts-wide">
-        <dt>File type</dt>
-        <dd>Excel workbook ({settings.import.acceptedFileType}) only; files with macros are rejected; formulas are not evaluated</dd>
-        <dt>Maximum size</dt>
-        <dd>{formatBytes(settings.import.maxFileSizeBytes)}</dd>
-        <dt>Maximum rows</dt>
-        <dd>{formatNumber(settings.import.maxRows)}</dd>
-        <dt>Required columns</dt>
-        <dd>CustomerID, CustomerName, PhoneNumber, Location, Plan</dd>
-        <dt>Validation</dt>
-        <dd>CustomerID present and unique; name; 10-digit Indian mobile number; location with pincode; plan mapped to the catalogue</dd>
-        <dt>Existing customers</dt>
-        <dd>Never overwritten by an import; only their delivery group can change, and only when you choose to</dd>
-      </dl>
-      <p className="footnote">
-        <Link to="/upload" className="link">
-          Upload customers <ArrowRight size={13} />
-        </Link>
-      </p>
-    </Card>
-  );
-}
-
 function ExportTab({ settings }: { settings: AppSettings }) {
   return (
-    <Card title={<><Download size={18} /> Export settings</>} subtitle="Excel exports from View & Manage Data.">
+    <Card title={<><Download size={18} /> Export settings</>} subtitle="Excel and PDF exports from Customers → Export.">
       <dl className="facts facts-wide">
-        <dt>Scopes</dt>
-        <dd>All customers · Filtered (exactly the current View Data filters) · Selected rows</dd>
-        <dt>Maximum rows</dt>
-        <dd>{formatNumber(settings.export.maxRows)} per export</dd>
-        <dt>Dates</dt>
-        <dd>Real Excel dates in {settings.export.timeZone}</dd>
+        <dt>Formats</dt>
+        <dd>Excel (.xlsx) to work with the data · PDF (A4) to print or share</dd>
+        <dt>Rows</dt>
+        <dd>Filtered (every page of the current filters and search) · This page · Selected rows · All customers. Rows are chosen on the server with the table's filters and sort order.</dd>
         <dt>Columns</dt>
+        <dd>The columns visible in the table, in the same order (choose Columns in the table to change them), or all columns for a full export.</dd>
+        <dt>Maximum rows</dt>
+        <dd>
+          {formatNumber(settings.export.maxRows)} per Excel export · {formatNumber(settings.export.pdfMaxRows)} per PDF
+        </dd>
+        <dt>Dates</dt>
+        <dd>Shown as “12 Oct 2026” in {settings.export.timeZone}; Excel stores them as real dates</dd>
+        <dt>Excel</dt>
+        <dd>Formatted header, autofilter, frozen header row; Customer ID, phone and pincode stored as text (no scientific notation); an “Export info” sheet lists the filters</dd>
+        <dt>PDF</dt>
+        <dd>Heading with the filters, header row repeated on every page, page numbers and generation time; landscape and smaller text only when many columns are chosen</dd>
+        <dt>Available columns</dt>
         <dd>
           <div className="tag-cloud">
             {settings.export.columns.map((c) => (
@@ -424,8 +299,6 @@ function ExportTab({ settings }: { settings: AppSettings }) {
             ))}
           </div>
         </dd>
-        <dt>Format</dt>
-        <dd>Formatted header, autofilter, frozen header row, phone and pincode stored as text (no scientific notation), plus an “Export info” sheet</dd>
       </dl>
     </Card>
   );

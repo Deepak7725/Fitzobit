@@ -1,37 +1,33 @@
 using Fitzobit.Domain.Auditing;
-using Fitzobit.Domain.Catalogue;
 using Fitzobit.Domain.Customers;
 using Fitzobit.Domain.DeliveryGroups;
-using Fitzobit.Domain.Imports;
-using Fitzobit.Domain.Plans;
+using Fitzobit.Domain.Dictionaries;
+using Fitzobit.Domain.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Fitzobit.Application.Abstractions;
 
 /// <summary>
-/// Persistence boundary used by application services. Deliberately provider-neutral:
-/// nothing here (or in callers) may depend on SQLite- or PostgreSQL-specific behaviour.
+/// Persistence boundary used by application services (PostgreSQL through EF Core). Provider-specific SQL stays in
+/// Infrastructure (e.g. <see cref="Customers.ICustomerIdGenerator"/>).
 /// </summary>
 public interface IFitzobitDbContext
 {
     DbSet<Customer> Customers { get; }
-    DbSet<Plan> Plans { get; }
-    DbSet<PlanAlias> PlanAliases { get; }
-    DbSet<CatalogueItem> CatalogueItems { get; }
-    DbSet<CataloguePricingTier> CataloguePricingTiers { get; }
+    DbSet<CustomerPackage> CustomerPackages { get; }
+    DbSet<PackagePause> PackagePauses { get; }
+    DbSet<CustomerNote> CustomerNotes { get; }
+    DbSet<DictionaryEntry> DictionaryEntries { get; }
     DbSet<DeliveryGroup> DeliveryGroups { get; }
     DbSet<CustomerDeliveryGroupAssignment> CustomerDeliveryGroupAssignments { get; }
     DbSet<CustomerDeliveryGroupAssignmentHistory> CustomerDeliveryGroupAssignmentHistory { get; }
-    DbSet<ImportBatch> ImportBatches { get; }
-    DbSet<ImportRow> ImportRows { get; }
-    DbSet<ImportDraftGroup> ImportDraftGroups { get; }
-    DbSet<ImportPlanMapping> ImportPlanMappings { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<Domain.Users.AppUser> Users { get; }
     DbSet<Domain.Messaging.WhatsAppMessage> WhatsAppMessages { get; }
+    DbSet<AppSetting> AppSettings { get; }
 
-    /// <summary>For transactions only (BeginTransactionAsync); provider-neutral.</summary>
+    /// <summary>For transactions only (BeginTransactionAsync).</summary>
     DatabaseFacade Database { get; }
 
     Microsoft.EntityFrameworkCore.ChangeTracking.ChangeTracker ChangeTracker { get; }
@@ -39,7 +35,7 @@ public interface IFitzobitDbContext
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>The user performing the current operation. Part 1 has no sign-in, so this comes from configuration.</summary>
+/// <summary>The user performing the current operation (the signed-in user).</summary>
 public interface ICurrentUser
 {
     string UserName { get; }

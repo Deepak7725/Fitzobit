@@ -23,3 +23,6 @@ samples/*.local.json
 
 ## Publish output (deploy/publish-azure.ps1)
 artifacts/
+
+## Local-only settings with the local database password (never commit)
+src/Fitzobit.Web/appsettings.Local.json

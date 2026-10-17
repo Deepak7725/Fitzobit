@@ -1,74 +1,124 @@
+using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using Fitzobit.Application.Abstractions;
 using Fitzobit.Application.Common;
-using Fitzobit.Application.Imports;
 using Fitzobit.Domain.Common;
 using Fitzobit.Domain.Customers;
-using Fitzobit.Domain.Imports;
+using Fitzobit.Domain.Deliveries;
+using Fitzobit.Domain.DeliveryGroups;
+using Fitzobit.Domain.Dictionaries;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fitzobit.Application.Customers;
 
-/// <summary>View Data filters. All optional; they combine with AND.</summary>
+/// <summary>Customers list filters. All optional; they combine with AND.</summary>
 public sealed class CustomerFilter
 {
-    /// <summary>Matches CustomerID, name, phone, location, pincode, plan name or delivery group name.</summary>
+    /// <summary>Matches CustomerID, name, phone, address, pincode, a package's meal type, or a group number ("3", "Group 3", "G3").</summary>
     public string? Search { get; set; }
 
     /// <summary>A delivery group id, or "none" for customers without an active group.</summary>
     public string? Group { get; set; }
 
-    public int? PlanId { get; set; }
+    /// <summary>Customers having at least one package with this preference / meal type / frequency.</summary>
+    public int? PreferenceId { get; set; }
+    public int? MealTypeId { get; set; }
+    public int? FrequencyId { get; set; }
+
+    public int? StatusId { get; set; }
 
     /// <summary>Exact pincode.</summary>
     public string? Pincode { get; set; }
 
-    /// <summary>Text contained in the location.</summary>
-    public string? Location { get; set; }
+    /// <summary>Text contained in the address.</summary>
+    public string? Address { get; set; }
 
-    /// <summary>Active | Inactive | Unassigned</summary>
-    public string? Status { get; set; }
+    /// <summary>Only customers still missing a package, a preferred delivery time or a pincode.</summary>
+    public bool Incomplete { get; set; }
 
-    public int? ImportBatchId { get; set; }
+    /// <summary>located (any coordinates) | approximate (pincode area only) | missing (location unavailable)</summary>
+    public string? Geo { get; set; }
 
-    /// <summary>customerId | customerName | location | pincode | plan | group | createdAt | updatedAt</summary>
+    /// <summary>customerId | customerName | address | pincode | deliveryTime | group | startDate | endDate | status | latitude | longitude | createdAt | updatedAt</summary>
     public string? Sort { get; set; }
 
     public bool Desc { get; set; }
 }
 
+/// <summary>A package as the customers list shows it.</summary>
+public sealed record PackageSummaryDto(int Id, string Preference, string MealType, int Quantity, string Frequency, DateOnly StartDate, DateOnly EndDate,
+    int PausedCount)
+{
+    /// <summary>"Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026)"</summary>
+    public string Text => CustomerPackageService.Text(Preference, MealType, Quantity, Frequency, StartDate, EndDate);
+}
+
+/// <param name="StartDate">The earliest start of the customer's packages.</param>
+/// <param name="EndDate">The latest end of the customer's packages.</param>
 public sealed record CustomerListItemDto(
     int Id,
     string CustomerId,
     string CustomerName,
     string PhoneNumber,
-    string? Location,
+    string? Address,
     string? Pincode,
-    int? PlanId,
-    string? PlanName,
-    int? GroupId,
-    string? GroupName,
+    TimeOnly? PreferredDeliveryTime,
+    IReadOnlyList<PackageSummaryDto> Packages,
+    DateOnly? StartDate,
+    DateOnly? EndDate,
     string Status,
+    string StatusCode,
+    int? GroupId,
+    int? GroupNumber,
+    decimal? Latitude,
+    decimal? Longitude,
+    string GeocodeStatus,
+    string? GeocodeMatchLevel,
     DateTime CreatedAt,
     DateTime UpdatedAt);
 
-public sealed record AssignmentHistoryDto(DateTime ChangedAt, string? ChangedBy, int? PreviousGroupId, string? PreviousGroupName,
-    int? NewGroupId, string? NewGroupName, string? Reason);
+public sealed record AssignmentHistoryDto(DateTime ChangedAt, string? ChangedBy, int? PreviousGroupId, int? PreviousGroupNumber,
+    int? NewGroupId, int? NewGroupNumber, string? Reason);
 
 public sealed record AuditEntryDto(long Id, DateTime OccurredAt, string Action, string EntityType, string? EntityKey, string Summary,
     string? PerformedBy, JsonElement? OldValues, JsonElement? NewValues, JsonElement? Details);
 
 public sealed record FilterOptionDto(int Id, string Name, bool IsActive);
 
-public sealed record ImportFilterOptionDto(int Id, string FileName, DateTime UploadedAt, int ImportedCount);
-
+/// <summary>Choices for the customers filter bar. Drop-down values come from the dictionary tables (inactive ones included, flagged).</summary>
 public sealed record CustomerFilterOptionsDto(
     IReadOnlyList<FilterOptionDto> Groups,
-    IReadOnlyList<FilterOptionDto> Plans,
-    IReadOnlyList<ImportFilterOptionDto> Imports,
+    IReadOnlyList<FilterOptionDto> Preferences,
+    IReadOnlyList<FilterOptionDto> MealTypes,
+    IReadOnlyList<FilterOptionDto> Frequencies,
+    IReadOnlyList<FilterOptionDto> Statuses,
     IReadOnlyList<int> PageSizes);
 
-public sealed record CustomerImportInfoDto(int Id, string FileName, DateTime UploadedAt, string? UploadedBy);
+/// <summary>A package in the customer panel.</summary>
+/// <param name="DeliveryDaysLeft">Delivery days still to come (today included), paused days not counted; null when the package has ended.</param>
+/// <param name="CanDelete">The first delivery day has not come yet.</param>
+public sealed record CustomerPackageDto(
+    int Id,
+    int PreferenceId,
+    string Preference,
+    int MealTypeId,
+    string MealType,
+    int Quantity,
+    int FrequencyId,
+    string Frequency,
+    int? FrequencyDeliveryDays,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    int? DeliveryDaysLeft,
+    int PausedCount,
+    int MaxPauses,
+    IReadOnlyList<PackagePauseDto> Pauses,
+    bool CanDelete,
+    DateTime CreatedAt,
+    string? CreatedBy,
+    DateTime UpdatedAt,
+    string? UpdatedBy);
 
 public sealed record CustomerDetailDto(
     int Id,
@@ -76,31 +126,37 @@ public sealed record CustomerDetailDto(
     string CustomerName,
     string PhoneNumber,
     string? NormalizedPhoneNumber,
-    string? Location,
-    string? NormalizedLocation,
+    string? Address,
     string? Pincode,
     string? Locality,
     string? City,
-    int? PlanId,
-    string? PlanName,
-    string? PlanCategory,
-    int? PricingTierId,
-    string? TierName,
-    string? OriginalPlan,
+    TimeOnly? PreferredDeliveryTime,
+    IReadOnlyList<CustomerPackageDto> Packages,
+    IReadOnlyList<CustomerNoteDto> Notes,
+    int StatusId,
     string Status,
+    string StatusCode,
+    decimal? Latitude,
+    decimal? Longitude,
+    string GeocodeStatus,
+    string? GeocodeMatchLevel,
+    string? GeocodeMessage,
+    string? GeocodeSource,
+    DateTime? GeocodedAt,
+    DateTime? GeocodeNextAttemptAt,
+    string? LegacyPlan,
     int? GroupId,
-    string? GroupName,
+    int? GroupNumber,
     DateTime? AssignedAt,
     string? AssignedBy,
     IReadOnlyList<AssignmentHistoryDto> History,
-    CustomerImportInfoDto? ImportBatch,
     IReadOnlyList<AuditEntryDto> Audit,
     DateTime CreatedAt,
     string? CreatedBy,
     DateTime UpdatedAt,
     string? UpdatedBy);
 
-/// <summary>Flat, composable view of a customer with its plan and current group (server-side filter/sort/page).</summary>
+/// <summary>Flat, composable view of a customer with its current group and package dates (server-side filter/sort/page).</summary>
 public sealed class CustomerRow
 {
     public int Id { get; init; }
@@ -108,23 +164,30 @@ public sealed class CustomerRow
     public string CustomerName { get; init; } = "";
     public string PhoneNumber { get; init; } = "";
     public string? NormalizedPhoneNumber { get; init; }
-    public string? Location { get; init; }
+    public string? Address { get; init; }
     public string? Pincode { get; init; }
-    public int? PlanId { get; init; }
-    public string? PlanName { get; init; }
+    public TimeOnly? PreferredDeliveryTime { get; init; }
+    public int PackageCount { get; init; }
+    public DateOnly? StartDate { get; init; }
+    public DateOnly? EndDate { get; init; }
+    public int StatusId { get; init; }
+    public string Status { get; init; } = "";
+    public string StatusCode { get; init; } = "";
+    public decimal? Latitude { get; init; }
+    public decimal? Longitude { get; init; }
+    public GeocodeStatus GeocodeStatus { get; init; }
+    public GeoMatchLevel? GeocodeMatchLevel { get; init; }
     public int? GroupId { get; init; }
-    public string? GroupName { get; init; }
-    public CustomerStatus Status { get; init; }
-    public int? SourceImportBatchId { get; init; }
+    public int? GroupNumber { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
 }
 
-public sealed class CustomerQueryService(IFitzobitDbContext db)
+public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliveryCalendarService calendar, IClock clock, ICurrentUser currentUser)
 {
     public static readonly int[] PageSizes = [10, 25, 50, 100];
 
-    /// <summary>Customers with plan and current group. Each lookup is an indexed per-row subquery; nothing is loaded into memory.</summary>
+    /// <summary>Customers with their current group and package dates, as one SQL query; nothing is loaded into memory.</summary>
     public IQueryable<CustomerRow> Rows() =>
         db.Customers.AsNoTracking().Select(c => new CustomerRow
         {
@@ -133,71 +196,86 @@ public sealed class CustomerQueryService(IFitzobitDbContext db)
             CustomerName = c.CustomerName,
             PhoneNumber = c.PhoneNumber,
             NormalizedPhoneNumber = c.NormalizedPhoneNumber,
-            Location = c.Location,
+            Address = c.Address,
             Pincode = c.Pincode,
-            PlanId = c.PlanId,
-            PlanName = c.Plan != null ? c.Plan.Name : null,
+            PreferredDeliveryTime = c.PreferredDeliveryTime,
+            PackageCount = c.Packages.Count(),
+            StartDate = c.Packages.Min(p => (DateOnly?)p.StartDate),
+            EndDate = c.Packages.Max(p => (DateOnly?)p.EndDate),
+            StatusId = c.StatusId,
+            Status = c.Status!.DisplayName,
+            StatusCode = c.Status.Code,
+            Latitude = c.Latitude,
+            Longitude = c.Longitude,
+            GeocodeStatus = c.GeocodeStatus,
+            GeocodeMatchLevel = c.GeocodeMatchLevel,
             GroupId = c.GroupAssignments.Where(a => a.IsActive).Select(a => (int?)a.DeliveryGroupId).FirstOrDefault(),
-            GroupName = c.GroupAssignments.Where(a => a.IsActive).Select(a => a.DeliveryGroup!.Name).FirstOrDefault(),
-            Status = c.Status,
-            SourceImportBatchId = c.SourceImportBatchId,
+            GroupNumber = c.GroupAssignments.Where(a => a.IsActive).Select(a => (int?)a.DeliveryGroup!.GroupNumber).FirstOrDefault(),
             CreatedAt = c.CreatedAt,
             UpdatedAt = c.UpdatedAt
         });
 
-    public static IQueryable<CustomerRow> ApplyFilter(IQueryable<CustomerRow> rows, CustomerFilter f)
+    /// <summary>The customers list filters, applied in SQL. Package filters match customers having any package with that value.</summary>
+    public IQueryable<CustomerRow> ApplyFilter(IQueryable<CustomerRow> rows, CustomerFilter f)
     {
+        var packages = db.CustomerPackages.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(f.Search))
         {
             var s = f.Search.Trim().ToLower();
             var digits = new string(s.Where(char.IsDigit).ToArray());
+            var groupMatch = GroupSearch().Match(s);
+            int? groupNumber = groupMatch.Success && int.TryParse(groupMatch.Groups[1].Value, out var n) ? n : null;
             rows = rows.Where(r =>
+                (groupNumber != null && r.GroupNumber == groupNumber) ||
                 r.CustomerId.ToLower().Contains(s) ||
                 r.CustomerName.ToLower().Contains(s) ||
                 r.PhoneNumber.Contains(s) ||
                 (digits.Length >= 3 && r.NormalizedPhoneNumber != null && r.NormalizedPhoneNumber.Contains(digits)) ||
-                (r.Location != null && r.Location.ToLower().Contains(s)) ||
+                (r.Address != null && r.Address.ToLower().Contains(s)) ||
                 (r.Pincode != null && r.Pincode.Contains(s)) ||
-                (r.PlanName != null && r.PlanName.ToLower().Contains(s)) ||
-                (r.GroupName != null && r.GroupName.ToLower().Contains(s)));
+                packages.Any(p => p.CustomerId == r.Id && p.MealType!.DisplayName.ToLower().Contains(s)));
         }
 
         if (f.Group == "none") rows = rows.Where(r => r.GroupId == null);
         else if (int.TryParse(f.Group, out var groupId)) rows = rows.Where(r => r.GroupId == groupId);
 
-        if (f.PlanId is { } planId) rows = rows.Where(r => r.PlanId == planId);
+        if (f.PreferenceId is { } preferenceId) rows = rows.Where(r => packages.Any(p => p.CustomerId == r.Id && p.PreferenceId == preferenceId));
+        if (f.MealTypeId is { } mealTypeId) rows = rows.Where(r => packages.Any(p => p.CustomerId == r.Id && p.MealTypeId == mealTypeId));
+        if (f.FrequencyId is { } frequencyId) rows = rows.Where(r => packages.Any(p => p.CustomerId == r.Id && p.FrequencyId == frequencyId));
+        if (f.StatusId is { } statusId) rows = rows.Where(r => r.StatusId == statusId);
         if (!string.IsNullOrWhiteSpace(f.Pincode)) { var pin = f.Pincode.Trim(); rows = rows.Where(r => r.Pincode == pin); }
-        if (!string.IsNullOrWhiteSpace(f.Location))
+        if (!string.IsNullOrWhiteSpace(f.Address))
         {
-            var loc = f.Location.Trim().ToLower();
-            rows = rows.Where(r => r.Location != null && r.Location.ToLower().Contains(loc));
+            var text = f.Address.Trim().ToLower();
+            rows = rows.Where(r => r.Address != null && r.Address.ToLower().Contains(text));
         }
-
-        rows = f.Status switch
+        rows = f.Geo?.ToLowerInvariant() switch
         {
-            "Active" => rows.Where(r => r.Status == CustomerStatus.Active),
-            "Inactive" => rows.Where(r => r.Status == CustomerStatus.Inactive),
-            "Unassigned" => rows.Where(r => r.GroupId == null),
+            "located" => rows.Where(r => r.Latitude != null),
+            "approximate" => rows.Where(r => r.Latitude != null && r.GeocodeMatchLevel == GeoMatchLevel.Pincode),
+            "missing" => rows.Where(r => r.Latitude == null),
             _ => rows
         };
-
-        if (f.ImportBatchId is { } batchId) rows = rows.Where(r => r.SourceImportBatchId == batchId);
+        if (f.Incomplete)
+            rows = rows.Where(r => r.PackageCount == 0 || r.PreferredDeliveryTime == null || r.Pincode == null);
         return rows;
     }
 
-    /// <summary>
-    /// Server-side sort. Empty values (no location, pincode, plan or group) always come last in both directions;
-    /// SQLite and PostgreSQL would otherwise disagree on where NULLs go.
-    /// </summary>
+    /// <summary>Server-side sort. Empty values (no address, pincode, time, group or package dates) always come last in both directions.</summary>
     public static IQueryable<CustomerRow> ApplySort(IQueryable<CustomerRow> rows, string? sort, bool desc)
     {
         IOrderedQueryable<CustomerRow> ordered = (sort ?? "customerId").ToLowerInvariant() switch
         {
             "customername" => desc ? rows.OrderByDescending(r => r.CustomerName) : rows.OrderBy(r => r.CustomerName),
-            "location" => EmptyLast(rows, r => r.Location, desc),
+            "address" => EmptyLast(rows, r => r.Address, desc),
             "pincode" => EmptyLast(rows, r => r.Pincode, desc),
-            "plan" => EmptyLast(rows, r => r.PlanName, desc),
-            "group" => EmptyLast(rows, r => r.GroupName, desc),
+            "deliverytime" => EmptyLast(rows, r => r.PreferredDeliveryTime, desc),
+            "group" => EmptyLast(rows, r => r.GroupNumber, desc),
+            "latitude" => EmptyLast(rows, r => r.Latitude, desc),
+            "longitude" => EmptyLast(rows, r => r.Longitude, desc),
+            "startdate" => EmptyLast(rows, r => r.StartDate, desc),
+            "enddate" => EmptyLast(rows, r => r.EndDate, desc),
+            "status" => desc ? rows.OrderByDescending(r => r.Status) : rows.OrderBy(r => r.Status),
             "createdat" => desc ? rows.OrderByDescending(r => r.CreatedAt) : rows.OrderBy(r => r.CreatedAt),
             "updatedat" => desc ? rows.OrderByDescending(r => r.UpdatedAt) : rows.OrderBy(r => r.UpdatedAt),
             _ => desc ? rows.OrderByDescending(r => r.CustomerId) : rows.OrderBy(r => r.CustomerId),
@@ -205,11 +283,10 @@ public sealed class CustomerQueryService(IFitzobitDbContext db)
         return ordered.ThenBy(r => r.Id);
     }
 
-    private static IOrderedQueryable<CustomerRow> EmptyLast(IQueryable<CustomerRow> rows,
-        System.Linq.Expressions.Expression<Func<CustomerRow, string?>> key, bool desc)
+    private static IOrderedQueryable<CustomerRow> EmptyLast<TKey>(IQueryable<CustomerRow> rows, Expression<Func<CustomerRow, TKey>> key, bool desc)
     {
-        var isEmpty = System.Linq.Expressions.Expression.Lambda<Func<CustomerRow, bool>>(
-            System.Linq.Expressions.Expression.Equal(key.Body, System.Linq.Expressions.Expression.Constant(null, typeof(string))), key.Parameters);
+        var isEmpty = Expression.Lambda<Func<CustomerRow, bool>>(
+            Expression.Equal(key.Body, Expression.Constant(null, typeof(TKey))), key.Parameters);
         var emptyLast = rows.OrderBy(isEmpty);
         return desc ? emptyLast.ThenByDescending(key) : emptyLast.ThenBy(key);
     }
@@ -221,60 +298,108 @@ public sealed class CustomerQueryService(IFitzobitDbContext db)
 
         var rows = ApplyFilter(Rows(), filter);
         var total = await rows.CountAsync(ct);
-        var items = await ApplySort(rows, filter.Sort, filter.Desc)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(r => new CustomerListItemDto(r.Id, r.CustomerId, r.CustomerName, r.PhoneNumber, r.Location, r.Pincode, r.PlanId,
-                r.PlanName, r.GroupId, r.GroupName, r.Status.ToString(), r.CreatedAt, r.UpdatedAt))
-            .ToListAsync(ct);
+        var pageRows = await ApplySort(rows, filter.Sort, filter.Desc).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var packages = await PackageSummariesAsync(pageRows.Select(r => r.Id).ToList(), ct);
+        var items = pageRows.Select(r => new CustomerListItemDto(r.Id, r.CustomerId, r.CustomerName, r.PhoneNumber, r.Address, r.Pincode,
+                r.PreferredDeliveryTime, packages.GetValueOrDefault(r.Id) ?? [], r.StartDate, r.EndDate, r.Status, r.StatusCode, r.GroupId,
+                r.GroupNumber, r.Latitude, r.Longitude, r.GeocodeStatus.ToString(), r.GeocodeMatchLevel?.ToString(), r.CreatedAt, r.UpdatedAt))
+            .ToList();
         return new PagedResult<CustomerListItemDto>(items, total, page, pageSize);
     }
 
-    /// <summary>Choices for the View Data filter bar: groups, plans and completed imports.</summary>
+    /// <summary>The packages of the given customers (by customer id), oldest start first. Loaded in batches to keep queries small.</summary>
+    public async Task<Dictionary<int, List<PackageSummaryDto>>> PackageSummariesAsync(IReadOnlyList<int> customerIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<int, List<PackageSummaryDto>>();
+        foreach (var batch in customerIds.Distinct().Chunk(2000))
+        {
+            var ids = batch.ToList();
+            var packages = await db.CustomerPackages.AsNoTracking()
+                .Where(p => ids.Contains(p.CustomerId))
+                .OrderBy(p => p.StartDate).ThenBy(p => p.Id)
+                .Select(p => new
+                {
+                    p.CustomerId,
+                    Dto = new PackageSummaryDto(p.Id, p.Preference!.DisplayName, p.MealType!.DisplayName, p.Quantity, p.Frequency!.DisplayName,
+                        p.StartDate, p.EndDate, p.PausedCount)
+                })
+                .ToListAsync(ct);
+            foreach (var p in packages)
+            {
+                if (!result.TryGetValue(p.CustomerId, out var list)) result[p.CustomerId] = list = [];
+                list.Add(p.Dto);
+            }
+        }
+        return result;
+    }
+
     public async Task<CustomerFilterOptionsDto> GetFilterOptionsAsync(CancellationToken ct = default)
     {
-        var groups = await db.DeliveryGroups.AsNoTracking().OrderBy(g => g.Name)
-            .Select(g => new FilterOptionDto(g.Id, g.Name, g.Status == RecordStatus.Active)).ToListAsync(ct);
-        var plans = await db.Plans.AsNoTracking().OrderBy(p => p.Name)
-            .Select(p => new FilterOptionDto(p.Id, p.Name, p.Status == RecordStatus.Active)).ToListAsync(ct);
-        var imports = await db.ImportBatches.AsNoTracking().Where(b => b.Status == ImportBatchStatus.Completed)
-            .OrderByDescending(b => b.UploadedAt).ThenByDescending(b => b.Id)
-            .Select(b => new ImportFilterOptionDto(b.Id, b.FileName, b.UploadedAt, b.ImportedCount)).ToListAsync(ct);
-        return new CustomerFilterOptionsDto(groups, plans, imports, PageSizes);
+        var groups = (await db.DeliveryGroups.AsNoTracking().OrderBy(g => g.GroupNumber)
+                .Select(g => new { g.Id, g.GroupNumber, Active = g.Status == RecordStatus.Active }).ToListAsync(ct))
+            .Select(g => new FilterOptionDto(g.Id, DeliveryGroup.Label(g.GroupNumber), g.Active)).ToList();
+        var entries = await db.DictionaryEntries.AsNoTracking().OrderBy(e => e.SortOrder).ThenBy(e => e.DisplayName)
+            .Select(e => new { e.DictionaryType, Option = new FilterOptionDto(e.Id, e.DisplayName, e.IsActive) }).ToListAsync(ct);
+        List<FilterOptionDto> Of(DictionaryType type) => entries.Where(e => e.DictionaryType == type).Select(e => e.Option).ToList();
+        return new CustomerFilterOptionsDto(groups, Of(DictionaryType.Preference), Of(DictionaryType.MealType), Of(DictionaryType.Frequency),
+            Of(DictionaryType.CustomerStatus), PageSizes);
     }
 
     public async Task<CustomerDetailDto> GetDetailAsync(int id, CancellationToken ct = default)
     {
-        var c = await db.Customers.AsNoTracking()
-                    .Include(x => x.Plan).Include(x => x.PricingTier)
-                    .FirstOrDefaultAsync(x => x.Id == id, ct)
+        var c = await db.Customers.AsNoTracking().Include(x => x.Status).FirstOrDefaultAsync(x => x.Id == id, ct)
                 ?? throw new NotFoundException($"Customer {id} was not found.");
 
         var current = await db.CustomerDeliveryGroupAssignments.AsNoTracking()
             .Where(a => a.CustomerId == id && a.IsActive)
-            .Select(a => new { a.DeliveryGroupId, a.DeliveryGroup!.Name, a.AssignedAt, a.AssignedBy })
+            .Select(a => new { a.DeliveryGroupId, a.DeliveryGroup!.GroupNumber, a.AssignedAt, a.AssignedBy })
             .FirstOrDefaultAsync(ct);
 
         var history = await db.CustomerDeliveryGroupAssignmentHistory.AsNoTracking()
             .Where(h => h.CustomerId == id)
             .OrderByDescending(h => h.ChangedAt).ThenByDescending(h => h.Id)
             .Select(h => new AssignmentHistoryDto(h.ChangedAt, h.ChangedBy, h.PreviousGroupId,
-                h.PreviousGroup != null ? h.PreviousGroup.Name : null, h.NewGroupId, h.NewGroup != null ? h.NewGroup.Name : null, h.Reason))
+                h.PreviousGroup != null ? (int?)h.PreviousGroup.GroupNumber : null, h.NewGroupId, h.NewGroup != null ? (int?)h.NewGroup.GroupNumber : null,
+                h.Reason))
             .ToListAsync(ct);
 
-        var batch = c.SourceImportBatchId is { } bid
-            ? await db.ImportBatches.AsNoTracking().Where(b => b.Id == bid)
-                .Select(b => new CustomerImportInfoDto(b.Id, b.FileName, b.UploadedAt, b.UploadedBy)).FirstOrDefaultAsync(ct)
-            : null;
+        var today = DeliveryScheduleService.Today(clock);
+        var packages = await db.CustomerPackages.AsNoTracking().Where(p => p.CustomerId == id)
+            .Include(p => p.Preference).Include(p => p.MealType).Include(p => p.Frequency).Include(p => p.Pauses)
+            .OrderBy(p => p.StartDate).ThenBy(p => p.Id)
+            .ToListAsync(ct);
+        var packageDtos = packages.Select(p =>
+        {
+            var pauses = p.Pauses.OrderBy(x => x.PausedDate)
+                .Select(x => new PackagePauseDto(x.PausedDate, x.PreviousEndDate, x.NewEndDate, x.Reason, x.CreatedAt, x.CreatedBy)).ToList();
+            // Delivery days still to come (today included), not counting days that are paused.
+            var from = p.StartDate > today ? p.StartDate : today;
+            int? daysLeft = p.EndDate < today ? null
+                : calendar.CountDeliveryDays(from, p.EndDate) - pauses.Count(x => x.PausedDate >= from && x.PausedDate <= p.EndDate);
+            return new CustomerPackageDto(p.Id, p.PreferenceId, p.Preference!.DisplayName, p.MealTypeId, p.MealType!.DisplayName, p.Quantity,
+                p.FrequencyId, p.Frequency!.DisplayName, p.Frequency.NumericValue, p.StartDate, p.EndDate, daysLeft, p.PausedCount,
+                CustomerPackage.MaxPauses, pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy);
+        }).ToList();
+
+        var notes = await db.CustomerNotes.AsNoTracking().Where(n => n.CustomerId == id)
+            .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id).ToListAsync(ct);
+        var writers = notes.Select(n => n.CreatedBy).Where(w => w != null).Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(u => writers.Contains(u.UserName))
+            .ToDictionaryAsync(u => u.UserName, u => u.DisplayName, StringComparer.OrdinalIgnoreCase, ct);
+        var noteDtos = notes.Select(n => new CustomerNoteDto(n.Id, n.Text, n.CreatedAt, n.CreatedBy,
+            n.CreatedBy != null ? names.GetValueOrDefault(n.CreatedBy, n.CreatedBy) : null, n.UpdatedAt, n.UpdatedBy,
+            Math.Abs((n.UpdatedAt - n.CreatedAt).TotalSeconds) > 1, CustomerNoteService.CanEdit(n.CreatedBy, currentUser))).ToList();
 
         var audit = await db.AuditLogs.AsNoTracking()
             .Where(a => a.EntityType == nameof(Customer) && a.EntityKey == c.CustomerId)
             .OrderByDescending(a => a.OccurredAt).ThenByDescending(a => a.Id).Take(50)
             .ToListAsync(ct);
 
-        return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.Location,
-            c.NormalizedLocation, c.Pincode, c.Locality, c.City, c.PlanId, c.Plan?.Name, c.Plan?.Category, c.PricingTierId,
-            c.PricingTier?.TierName, c.OriginalPlan, c.Status.ToString(), current?.DeliveryGroupId, current?.Name, current?.AssignedAt,
-            current?.AssignedBy, history, batch, audit.Select(ToDto).ToList(), c.CreatedAt, c.CreatedBy, c.UpdatedAt, c.UpdatedBy);
+        return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.Address, c.Pincode, c.Locality,
+            c.City, c.PreferredDeliveryTime, packageDtos, noteDtos, c.StatusId, c.Status!.DisplayName, c.Status.Code, c.Latitude, c.Longitude,
+            c.GeocodeStatus.ToString(), c.GeocodeMatchLevel?.ToString(), c.GeocodeMessage, c.GeocodeSource, c.GeocodedAt, c.GeocodeNextAttemptAt,
+            c.LegacyPlan, current?.DeliveryGroupId, current?.GroupNumber, current?.AssignedAt, current?.AssignedBy, history,
+            audit.Select(ToDto).ToList(), c.CreatedAt, c.CreatedBy, c.UpdatedAt, c.UpdatedBy);
     }
 
     public static AuditEntryDto ToDto(Domain.Auditing.AuditLog a) =>
@@ -286,4 +411,8 @@ public sealed class CustomerQueryService(IFitzobitDbContext db)
         try { return JsonDocument.Parse(value).RootElement.Clone(); }
         catch (JsonException) { return null; }
     }
+
+    /// <summary>"3", "group 3", "grp 3", "g3", "#3".</summary>
+    [GeneratedRegex(@"^(?:group|grp|g)?\s*#?\s*(\d{1,6})$")]
+    private static partial Regex GroupSearch();
 }

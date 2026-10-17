@@ -16,7 +16,7 @@ public class AuditLog
     /// <summary>Field values after the change (JSON object).</summary>
     public string? NewValues { get; set; }
 
-    /// <summary>Other context (JSON), e.g. import batch, filters used for an export.</summary>
+    /// <summary>Other context (JSON), e.g. filters used for an export.</summary>
     public string? Details { get; set; }
 
     public string? PerformedBy { get; set; }
@@ -32,13 +32,20 @@ public static class AuditActions
     public const string CustomerAssigned = "CustomerAssigned";
     public const string CustomerReassigned = "CustomerReassigned";
     public const string CustomerUnassigned = "CustomerUnassigned";
-    public const string ImportPerformed = "ImportPerformed";
+    public const string CustomerPaused = "CustomerPaused";
+    public const string CustomerPackageAdded = "CustomerPackageAdded";
+    public const string CustomerPackageUpdated = "CustomerPackageUpdated";
+    public const string CustomerPackageDeleted = "CustomerPackageDeleted";
+    public const string CustomerNoteAdded = "CustomerNoteAdded";
+    public const string CustomerNoteUpdated = "CustomerNoteUpdated";
+    public const string CustomerNoteDeleted = "CustomerNoteDeleted";
     public const string ExportPerformed = "ExportPerformed";
-    public const string CatalogueItemCreated = "CatalogueItemCreated";
-    public const string CatalogueItemChanged = "CatalogueItemChanged";
-    public const string PlanCreated = "PlanCreated";
-    public const string PlanUpdated = "PlanUpdated";
-    public const string PlanAliasDeleted = "PlanAliasDeleted";
+    public const string SettingsUpdated = "SettingsUpdated";
+    public const string LocationLookupRequested = "LocationLookupRequested";
+    public const string GroupsReclassified = "GroupsReclassified";
+    public const string DictionaryEntryCreated = "DictionaryEntryCreated";
+    public const string DictionaryEntryUpdated = "DictionaryEntryUpdated";
+    public const string DictionaryEntryDeleted = "DictionaryEntryDeleted";
     public const string UserCreated = "UserCreated";
     public const string UserUpdated = "UserUpdated";
     public const string UserPasswordReset = "UserPasswordReset";

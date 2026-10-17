@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Local database password: dotnet user-secrets (outside the repository), see README "Local PostgreSQL". -->
+    <UserSecretsId>fitzobit-web-local</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,15 +16,14 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
-  <!-- The catalogue workbook ships with the app, so a published deployment can seed the catalogue. -->
   <ItemGroup>
-    <None Include="..\..\Fitzobit_WhatsApp_Catalogue.xlsx" Link="Fitzobit_WhatsApp_Catalogue.xlsx" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Local-only settings (local database password): read from the project folder in Development, never copied or published. -->
+    <Content Update="appsettings.Local.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Fitzobit.Application\Fitzobit.Application.csproj" />
     <ProjectReference Include="..\Fitzobit.Infrastructure\Fitzobit.Infrastructure.csproj" />
-    <ProjectReference Include="..\Fitzobit.Infrastructure.PostgreSql\Fitzobit.Infrastructure.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

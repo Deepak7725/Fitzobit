@@ -4,6 +4,7 @@ using Fitzobit.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -15,48 +16,56 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.HasSequence("CustomerNumberSequence");
 
             modelBuilder.Entity("Fitzobit.Domain.Auditing.AuditLog", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(60)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(60)");
 
                     b.Property<string>("Details")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("EntityKey")
                         .HasMaxLength(300)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(300)");
 
                     b.Property<string>("EntityType")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("NewValues")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("OldValues")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("PerformedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(1000)");
 
                     b.HasKey("Id");
 
@@ -69,211 +78,116 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.ToTable("AuditLogs");
                 });
 
-            modelBuilder.Entity("Fitzobit.Domain.Catalogue.CatalogueItem", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Availability")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("BillingPeriod")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(4000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("DisplayPrice")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("DurationDays")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("DurationText")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IncludedItems")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("MealCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Source")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SourceNotes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Term")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Category");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("CatalogueItems");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Catalogue.CataloguePricingTier", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("BillingPeriod")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CatalogueItemId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("MealCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Source")
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TierName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CatalogueItemId", "TierName")
-                        .IsUnique();
-
-                    b.ToTable("CataloguePricingTiers");
-                });
-
             modelBuilder.Entity("Fitzobit.Domain.Customers.Customer", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("City")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("CustomerId")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("CustomerName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("GeocodeAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("GeocodeMatchLevel")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("GeocodeMessage")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("GeocodeNextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GeocodeSource")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("GeocodeStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("GeocodedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)");
+
+                    b.Property<string>("LegacyPlan")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Locality")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
-                    b.Property<string>("Location")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)");
 
-                    b.Property<string>("NormalizedLocation")
+                    b.Property<string>("NormalizedAddress")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("NormalizedPhoneNumber")
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("OriginalPlan")
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(30)");
 
                     b.Property<string>("Pincode")
                         .HasMaxLength(10)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(10)");
 
-                    b.Property<int?>("PlanId")
-                        .HasColumnType("INTEGER");
+                    b.Property<TimeOnly?>("PreferredDeliveryTime")
+                        .HasColumnType("time without time zone");
 
-                    b.Property<int?>("PricingTierId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("SourceImportBatchId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                    b.Property<int>("StatusId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UpdatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -286,45 +200,200 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Pincode");
 
-                    b.HasIndex("PlanId");
+                    b.HasIndex("StatusId");
 
-                    b.HasIndex("PricingTierId");
+                    b.HasIndex("GeocodeStatus", "GeocodeNextAttemptAt");
 
-                    b.HasIndex("SourceImportBatchId");
+                    b.ToTable("Customers", t =>
+                        {
+                            t.HasCheckConstraint("CK_Customers_Latitude", "\"Latitude\" IS NULL OR \"Latitude\" BETWEEN -90 AND 90");
 
-                    b.HasIndex("Status");
+                            t.HasCheckConstraint("CK_Customers_Longitude", "\"Longitude\" IS NULL OR \"Longitude\" BETWEEN -180 AND 180");
+                        });
+                });
 
-                    b.ToTable("Customers");
+            modelBuilder.Entity("Fitzobit.Domain.Customers.CustomerNote", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId", "CreatedAt");
+
+                    b.ToTable("CustomerNotes", (string)null);
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.CustomerPackage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("FrequencyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MealTypeId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PausedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PreferenceId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EndDate");
+
+                    b.HasIndex("FrequencyId");
+
+                    b.HasIndex("MealTypeId");
+
+                    b.HasIndex("PreferenceId");
+
+                    b.HasIndex("CustomerId", "StartDate");
+
+                    b.ToTable("CustomerPackages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerPackages_Dates", "\"EndDate\" >= \"StartDate\"");
+
+                            t.HasCheckConstraint("CK_CustomerPackages_PausedCount", "\"PausedCount\" BETWEEN 0 AND 3");
+
+                            t.HasCheckConstraint("CK_CustomerPackages_Quantity", "\"Quantity\" BETWEEN 1 AND 20");
+                        });
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.PackagePause", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateOnly>("NewEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("PausedDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("PreviousEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PausedDate");
+
+                    b.HasIndex("PackageId", "PausedDate")
+                        .IsUnique();
+
+                    b.ToTable("PackagePauses", (string)null);
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.DeliveryGroups.CustomerDeliveryGroupAssignment", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("AssignedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("AssignedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("CustomerId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("DeliveryGroupId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId")
                         .IsUnique()
                         .HasDatabaseName("UX_CustomerDeliveryGroupAssignments_ActiveCustomer")
-                        .HasFilter("\"IsActive\" = 1");
+                        .HasFilter("\"IsActive\" = TRUE");
 
                     b.HasIndex("CustomerId", "IsActive");
 
@@ -337,27 +406,29 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("ChangedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ChangedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("CustomerId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int?>("NewGroupId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int?>("PreviousGroupId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(500)");
 
                     b.HasKey("Id");
 
@@ -376,428 +447,173 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(1000)");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                    b.Property<int>("GroupNumber")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UpdatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("GroupNumber")
                         .IsUnique();
 
                     b.HasIndex("Status");
 
-                    b.ToTable("DeliveryGroups");
+                    b.ToTable("DeliveryGroups", t =>
+                        {
+                            t.HasCheckConstraint("CK_DeliveryGroups_GroupNumber", "\"GroupNumber\" > 0");
+                        });
                 });
 
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportBatch", b =>
+            modelBuilder.Entity("Fitzobit.Domain.Dictionaries.DictionaryEntry", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
-                    b.Property<int>("AssignmentsChanged")
-                        .HasColumnType("INTEGER");
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("CustomersCreated")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("EmptyRowsSkipped")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ExistingCustomersMatched")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(4000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FileMessages")
-                        .HasMaxLength(4000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(260)
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("FileSizeBytes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("GroupsCreated")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ImportedCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("InvalidRows")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("SaveDurationMs")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SheetName")
+                    b.Property<string>("CreatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
-                    b.Property<string>("Status")
+                    b.Property<string>("DictionaryType")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
-                    b.Property<int>("TotalRows")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UploadedBy")
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
-                    b.Property<int>("ValidRows")
-                        .HasColumnType("INTEGER");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
 
-                    b.Property<long>("ValidationDurationMs")
-                        .HasColumnType("INTEGER");
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("boolean");
 
-                    b.Property<int>("WarningRows")
-                        .HasColumnType("INTEGER");
+                    b.Property<int?>("NumericValue")
+                        .HasColumnType("integer");
 
-                    b.HasKey("Id");
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
 
-                    b.HasIndex("CreatedAt");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.HasIndex("Status");
-
-                    b.HasIndex("UploadedAt");
-
-                    b.ToTable("ImportBatches");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportDraftGroup", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("CreatedDeliveryGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ImportBatchId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("TEXT");
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedDeliveryGroupId");
-
-                    b.HasIndex("ImportBatchId");
-
-                    b.ToTable("ImportDraftGroups");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportPlanMapping", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CandidatePlanIdsJson")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ExampleText")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ImportBatchId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Method")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("PlanId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PlanKey")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("PricingTierId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("RowCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PlanId");
-
-                    b.HasIndex("PricingTierId");
-
-                    b.HasIndex("ImportBatchId", "PlanKey")
+                    b.HasIndex("DictionaryType", "Code")
                         .IsUnique();
 
-                    b.ToTable("ImportPlanMappings");
-                });
+                    b.HasIndex("DictionaryType", "SortOrder");
 
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportRow", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("City")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CustomerId")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CustomerName")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("ExcludedByManager")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("ExistingCustomerDbId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("ExistingGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ImportBatchId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsExistingCustomer")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsPotentialDuplicate")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("IssueCodes")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IssuesJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Locality")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("NormalizedLocation")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("NormalizedPhoneNumber")
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Pincode")
-                        .HasMaxLength(10)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("PlanId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PlanKey")
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("PricingTierId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("RawCustomerId")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RawCustomerName")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RawLocation")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RawPhoneNumber")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RawPlan")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("RowNumber")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("SuggestedDeliveryGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("SuggestedDraftGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SuggestionReason")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("TargetDeliveryGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("TargetDraftGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SuggestedDeliveryGroupId");
-
-                    b.HasIndex("SuggestedDraftGroupId");
-
-                    b.HasIndex("TargetDeliveryGroupId");
-
-                    b.HasIndex("TargetDraftGroupId");
-
-                    b.HasIndex("ImportBatchId", "Pincode");
-
-                    b.HasIndex("ImportBatchId", "PlanKey");
-
-                    b.HasIndex("ImportBatchId", "RowNumber")
-                        .IsUnique();
-
-                    b.HasIndex("ImportBatchId", "Status");
-
-                    b.ToTable("ImportRows");
+                    b.ToTable("DictionaryEntries");
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.Messaging.WhatsAppMessage", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int?>("CustomerId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("DeliveredAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("DeliveryGroupId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Error")
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<string>("LanguageCode")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("ParametersJson")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ProviderMessageId")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Purpose")
                         .IsRequired()
                         .HasMaxLength(40)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(40)");
 
                     b.Property<DateTime?>("ReadAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("SentAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("TemplateName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("ToPhoneNumber")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
 
@@ -812,148 +628,81 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.ToTable("WhatsAppMessages");
                 });
 
-            modelBuilder.Entity("Fitzobit.Domain.Plans.Plan", b =>
+            modelBuilder.Entity("Fitzobit.Domain.Settings.AppSetting", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("CatalogueItemId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Category")
+                    b.Property<string>("Key")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("CatalogueItemId");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("Plans");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Plans.PlanAlias", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("AliasKey")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CreatedBy")
+                    b.Property<string>("UpdatedBy")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
-                    b.Property<string>("OriginalText")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
+                    b.Property<string>("Value")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
-                    b.Property<int>("PlanId")
-                        .HasColumnType("INTEGER");
+                    b.HasKey("Key");
 
-                    b.Property<int?>("PricingTierId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AliasKey")
-                        .IsUnique();
-
-                    b.HasIndex("PlanId");
-
-                    b.HasIndex("PricingTierId");
-
-                    b.ToTable("PlanAliases");
+                    b.ToTable("AppSettings");
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.Users.AppUser", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("FailedLoginCount")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastLoginAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LockoutEndsAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("SecurityStamp")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserName")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
 
@@ -967,50 +716,87 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("FriendlyName")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Xml")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
                     b.ToTable("DataProtectionKeys");
                 });
 
-            modelBuilder.Entity("Fitzobit.Domain.Catalogue.CataloguePricingTier", b =>
+            modelBuilder.Entity("Fitzobit.Domain.Customers.Customer", b =>
                 {
-                    b.HasOne("Fitzobit.Domain.Catalogue.CatalogueItem", "CatalogueItem")
-                        .WithMany("PricingTiers")
-                        .HasForeignKey("CatalogueItemId")
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Status")
+                        .WithMany()
+                        .HasForeignKey("StatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Status");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.CustomerNote", b =>
+                {
+                    b.HasOne("Fitzobit.Domain.Customers.Customer", "Customer")
+                        .WithMany("Notes")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.CustomerPackage", b =>
+                {
+                    b.HasOne("Fitzobit.Domain.Customers.Customer", "Customer")
+                        .WithMany("Packages")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Frequency")
+                        .WithMany()
+                        .HasForeignKey("FrequencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "MealType")
+                        .WithMany()
+                        .HasForeignKey("MealTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Preference")
+                        .WithMany()
+                        .HasForeignKey("PreferenceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Frequency");
+
+                    b.Navigation("MealType");
+
+                    b.Navigation("Preference");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.PackagePause", b =>
+                {
+                    b.HasOne("Fitzobit.Domain.Customers.CustomerPackage", "Package")
+                        .WithMany("Pauses")
+                        .HasForeignKey("PackageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("CatalogueItem");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Customers.Customer", b =>
-                {
-                    b.HasOne("Fitzobit.Domain.Plans.Plan", "Plan")
-                        .WithMany()
-                        .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.Catalogue.CataloguePricingTier", "PricingTier")
-                        .WithMany()
-                        .HasForeignKey("PricingTierId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.Imports.ImportBatch", null)
-                        .WithMany()
-                        .HasForeignKey("SourceImportBatchId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Plan");
-
-                    b.Navigation("PricingTier");
+                    b.Navigation("Package");
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.DeliveryGroups.CustomerDeliveryGroupAssignment", b =>
@@ -1057,78 +843,6 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.Navigation("PreviousGroup");
                 });
 
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportDraftGroup", b =>
-                {
-                    b.HasOne("Fitzobit.Domain.DeliveryGroups.DeliveryGroup", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedDeliveryGroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.Imports.ImportBatch", "ImportBatch")
-                        .WithMany("DraftGroups")
-                        .HasForeignKey("ImportBatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ImportBatch");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportPlanMapping", b =>
-                {
-                    b.HasOne("Fitzobit.Domain.Imports.ImportBatch", "ImportBatch")
-                        .WithMany("PlanMappings")
-                        .HasForeignKey("ImportBatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Fitzobit.Domain.Plans.Plan", null)
-                        .WithMany()
-                        .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.Catalogue.CataloguePricingTier", null)
-                        .WithMany()
-                        .HasForeignKey("PricingTierId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("ImportBatch");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportRow", b =>
-                {
-                    b.HasOne("Fitzobit.Domain.Imports.ImportBatch", "ImportBatch")
-                        .WithMany("Rows")
-                        .HasForeignKey("ImportBatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Fitzobit.Domain.DeliveryGroups.DeliveryGroup", null)
-                        .WithMany()
-                        .HasForeignKey("SuggestedDeliveryGroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.Imports.ImportDraftGroup", null)
-                        .WithMany()
-                        .HasForeignKey("SuggestedDraftGroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.DeliveryGroups.DeliveryGroup", "TargetDeliveryGroup")
-                        .WithMany()
-                        .HasForeignKey("TargetDeliveryGroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Fitzobit.Domain.Imports.ImportDraftGroup", "TargetDraftGroup")
-                        .WithMany()
-                        .HasForeignKey("TargetDraftGroupId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("ImportBatch");
-
-                    b.Navigation("TargetDeliveryGroup");
-
-                    b.Navigation("TargetDraftGroup");
-                });
-
             modelBuilder.Entity("Fitzobit.Domain.Messaging.WhatsAppMessage", b =>
                 {
                     b.HasOne("Fitzobit.Domain.Customers.Customer", null)
@@ -1142,56 +856,23 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 
-            modelBuilder.Entity("Fitzobit.Domain.Plans.Plan", b =>
-                {
-                    b.HasOne("Fitzobit.Domain.Catalogue.CatalogueItem", "CatalogueItem")
-                        .WithMany()
-                        .HasForeignKey("CatalogueItemId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CatalogueItem");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Plans.PlanAlias", b =>
-                {
-                    b.HasOne("Fitzobit.Domain.Plans.Plan", "Plan")
-                        .WithMany()
-                        .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Fitzobit.Domain.Catalogue.CataloguePricingTier", "PricingTier")
-                        .WithMany()
-                        .HasForeignKey("PricingTierId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Plan");
-
-                    b.Navigation("PricingTier");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Catalogue.CatalogueItem", b =>
-                {
-                    b.Navigation("PricingTiers");
-                });
-
             modelBuilder.Entity("Fitzobit.Domain.Customers.Customer", b =>
                 {
                     b.Navigation("GroupAssignments");
+
+                    b.Navigation("Notes");
+
+                    b.Navigation("Packages");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.CustomerPackage", b =>
+                {
+                    b.Navigation("Pauses");
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.DeliveryGroups.DeliveryGroup", b =>
                 {
                     b.Navigation("Assignments");
-                });
-
-            modelBuilder.Entity("Fitzobit.Domain.Imports.ImportBatch", b =>
-                {
-                    b.Navigation("DraftGroups");
-
-                    b.Navigation("PlanMappings");
-
-                    b.Navigation("Rows");
                 });
 #pragma warning restore 612, 618
         }

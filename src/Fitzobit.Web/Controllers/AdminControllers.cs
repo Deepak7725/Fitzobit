@@ -1,13 +1,13 @@
 using Fitzobit.Application.Abstractions;
 using Fitzobit.Application.Administration;
-using Fitzobit.Application.Catalogue;
+using Fitzobit.Application.Common;
 using Fitzobit.Application.Customers;
-using Fitzobit.Application.Imports;
-using Fitzobit.Application.Imports.Locations;
+using Fitzobit.Application.Dictionaries;
+using Fitzobit.Application.Geocoding;
 using Fitzobit.Application.Messaging;
 using Fitzobit.Application.Users;
+using Fitzobit.Domain.Dictionaries;
 using Fitzobit.Domain.Users;
-using Fitzobit.Infrastructure.Catalogue;
 using Fitzobit.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,19 +18,15 @@ namespace Fitzobit.Web.Controllers;
 public sealed record CreateUserRequest(string UserName, string DisplayName, UserRole Role, string Password);
 public sealed record UpdateUserRequest(string DisplayName, UserRole Role, bool IsActive);
 public sealed record ResetPasswordRequest(string NewPassword);
-public sealed record PlanStatusRequest(bool Active);
+public sealed record ReorderRequest(List<int> Ids);
 
-public sealed record ImportSettingsDto(long MaxFileSizeBytes, int MaxRows, string AcceptedFileType);
-public sealed record ExportSettingsDto(int MaxRows, string TimeZone, IReadOnlyList<string> Columns);
+public sealed record ExportSettingsDto(int MaxRows, int PdfMaxRows, string TimeZone, IReadOnlyList<string> Columns);
 public sealed record LocationSettingsDto(IReadOnlyList<string> KnownCities, IReadOnlyDictionary<string, string> CityAliases, IReadOnlyList<string> RegionWords);
-public sealed record CatalogueSourceDto(string FileName, bool Exists, bool SyncOnStartup);
 public sealed record SecuritySettingsDto(int SessionHours, int PasswordMinLength, int MaxFailedAttempts, int LockoutMinutes);
 
 public sealed record SettingsDto(
-    ImportSettingsDto Import,
     ExportSettingsDto Export,
     LocationSettingsDto Locations,
-    CatalogueSourceDto Catalogue,
     SecuritySettingsDto Security,
     WhatsAppStatusDto WhatsApp);
 
@@ -80,23 +76,17 @@ public sealed class AuditController(AuditQueryService audit) : ControllerBase
 [Route("api/settings")]
 [Authorize(Policy = Policies.Operate)]
 public sealed class SettingsController(
-    IOptions<ImportOptions> import,
     IOptions<ExportOptions> export,
     IOptions<LocationClassificationOptions> locations,
-    IOptions<CatalogueSeedOptions> catalogue,
     IConfiguration configuration,
     WhatsAppStatusService whatsApp) : ControllerBase
 {
     [HttpGet]
     public async Task<SettingsDto> Get(CancellationToken ct)
     {
-        var cataloguePath = catalogue.Value.ResolveFilePath();
         return new SettingsDto(
-            new ImportSettingsDto(import.Value.MaxFileSizeBytes, import.Value.MaxRows, ".xlsx"),
-            new ExportSettingsDto(export.Value.MaxRows, export.Value.TimeZone,
-                ["CustomerID", "CustomerName", "PhoneNumber", "Location", "Pincode", "Plan", "DeliveryGroup", "Status", "CreatedAt", "UpdatedAt"]),
+            new ExportSettingsDto(export.Value.MaxRows, export.Value.PdfMaxRows, export.Value.TimeZone, CustomerExportColumns.All.Select(c => c.Header).ToList()),
             new LocationSettingsDto(locations.Value.KnownCities, locations.Value.CityAliases, locations.Value.RegionWords),
-            new CatalogueSourceDto(Path.GetFileName(cataloguePath), System.IO.File.Exists(cataloguePath), catalogue.Value.Enabled),
             new SecuritySettingsDto(configuration.GetValue("Auth:SessionHours", 10), PasswordPolicy.MinLength, AuthService.MaxFailedAttempts,
                 (int)AuthService.LockoutDuration.TotalMinutes),
             await whatsApp.GetAsync(ct));
@@ -104,31 +94,56 @@ public sealed class SettingsController(
 
     [HttpGet("whatsapp")]
     public Task<WhatsAppStatusDto> WhatsApp(CancellationToken ct) => whatsApp.GetAsync(ct);
+
+    /// <summary>The city Fitzobit delivers in (used to look up customer locations).</summary>
+    [HttpGet("delivery-area")]
+    public Task<ServiceAreaDto> DeliveryArea([FromServices] ServiceAreaService area, CancellationToken ct) => area.GetAsync(ct);
+
+    [HttpPut("delivery-area")]
+    [Authorize(Policy = Policies.Admin)]
+    public Task<ServiceAreaDto> SaveDeliveryArea(SaveServiceAreaRequest request, [FromServices] ServiceAreaService area, CancellationToken ct) =>
+        area.SaveAsync(request, ct);
 }
 
-/// <summary>Administrative catalogue actions: plan availability, remembered plan mappings and re-sync from the workbook.</summary>
+/// <summary>
+/// Customer drop-down values. Everyone who works with customers reads the active values; only administrators change them.
+/// Types: Preference, MealType, Frequency, CustomerStatus.
+/// </summary>
 [ApiController]
-[Route("api/catalogue")]
-[Authorize(Policy = Policies.Admin)]
-public sealed class CatalogueAdminController(PlanAdminService plans, CatalogueSeeder seeder) : ControllerBase
+[Route("api/dictionaries")]
+[Authorize(Policy = Policies.Operate)]
+public sealed class DictionariesController(DictionaryService dictionaries) : ControllerBase
 {
-    [HttpPut("plans/{id:int}/status")]
-    public async Task<IActionResult> SetPlanStatus(int id, PlanStatusRequest request, CancellationToken ct)
+    /// <summary>Active values of every drop-down, in display order (used by the Add/Edit customer screens).</summary>
+    [HttpGet]
+    public Task<DictionaryOptionsDto> Active(CancellationToken ct) => dictionaries.GetActiveOptionsAsync(ct);
+
+    [HttpGet("{type}")]
+    [Authorize(Policy = Policies.Admin)]
+    public Task<IReadOnlyList<DictionaryEntryDto>> List(DictionaryType type, CancellationToken ct) => dictionaries.ListAsync(type, ct);
+
+    [HttpPost("{type}")]
+    [Authorize(Policy = Policies.Admin)]
+    public Task<DictionaryEntryDto> Create(DictionaryType type, SaveDictionaryEntryRequest request, CancellationToken ct) =>
+        dictionaries.CreateAsync(type, request, ct);
+
+    [HttpPut("{type}/order")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<IActionResult> Reorder(DictionaryType type, ReorderRequest request, CancellationToken ct)
     {
-        await plans.SetStatusAsync(id, request.Active, ct);
+        await dictionaries.ReorderAsync(type, request.Ids ?? [], ct);
         return NoContent();
     }
 
-    [HttpGet("plan-aliases")]
-    public Task<IReadOnlyList<PlanAliasDto>> PlanAliases(CancellationToken ct) => plans.ListAliasesAsync(ct);
+    [HttpPut("entries/{id:int}")]
+    [Authorize(Policy = Policies.Admin)]
+    public Task<DictionaryEntryDto> Update(int id, SaveDictionaryEntryRequest request, CancellationToken ct) => dictionaries.UpdateAsync(id, request, ct);
 
-    [HttpDelete("plan-aliases/{id:int}")]
-    public async Task<IActionResult> DeletePlanAlias(int id, CancellationToken ct)
+    [HttpDelete("entries/{id:int}")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        await plans.DeleteAliasAsync(id, ct);
+        await dictionaries.DeleteAsync(id, ct);
         return NoContent();
     }
-
-    [HttpPost("resync")]
-    public Task<CatalogueSeedResult> Resync(CancellationToken ct) => seeder.SeedAsync(ct);
 }

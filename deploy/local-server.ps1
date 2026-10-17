@@ -53,7 +53,16 @@ if (Test-Path $log) { Move-Item $log (Join-Path $logDir 'server.previous.log') -
 
 $env:ASPNETCORE_ENVIRONMENT = 'Production'
 $env:ASPNETCORE_URLS = "http://localhost:$Port"
-$env:Fitzobit__BasePath = $root          # database: data\fitzobit.db, catalogue: Fitzobit_WhatsApp_Catalogue.xlsx
+# Production mode does not read user secrets, so pass on the local PostgreSQL connection string from them
+# (unless Database__ConnectionString is already set).
+if (-not $env:Database__ConnectionString) {
+    $secrets = (dotnet user-secrets list --json --project (Join-Path $root 'src\Fitzobit.Web')) -join "`n"
+    $start = $secrets.IndexOf('{'); $end = $secrets.LastIndexOf('}')
+    if ($start -ge 0 -and $end -gt $start) {
+        $env:Database__ConnectionString = ($secrets.Substring($start, $end - $start + 1) | ConvertFrom-Json).'Database:ConnectionString'
+    }
+    if (-not $env:Database__ConnectionString) { throw 'Set the database connection string first (README, "Local PostgreSQL").' }
+}
 # Cookies are Secure whenever the request is HTTPS (everything through Tailscale Funnel), and still work for
 # http://localhost on this PC, which is needed for the first-run administrator setup.
 $env:Auth__RequireHttpsCookies = 'false'

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Inbox, RefreshCw } from 'lucide-react';
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
@@ -38,22 +39,31 @@ export function Card({ title, subtitle, actions, children, className = '' }: {
 
 export type Tone = 'blue' | 'green' | 'amber' | 'violet' | 'teal' | 'rose' | 'slate' | 'indigo';
 
-export function StatCard({ icon, label, value, hint, tone }: {
+/** A headline number; with <c>to</c> the whole card links to the matching customers. */
+export function StatCard({ icon, label, value, hint, tone, to }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   tone: Tone;
+  to?: string;
 }) {
-  return (
-    <div className="stat-card">
+  const body = (
+    <>
       <div className={`stat-icon tone-${tone}`}>{icon}</div>
       <div className="stat-body">
         <span className="stat-label">{label}</span>
         <span className="stat-value">{value}</span>
         {hint && <span className="stat-hint">{hint}</span>}
       </div>
-    </div>
+    </>
+  );
+  return to ? (
+    <Link to={to} className="stat-card stat-card-link">
+      {body}
+    </Link>
+  ) : (
+    <div className="stat-card">{body}</div>
   );
 }
 
@@ -113,6 +123,21 @@ export function ErrorPanel({ message, onRetry }: { message: string; onRetry?: ()
           <RefreshCw size={14} /> Retry
         </button>
       )}
+    </div>
+  );
+}
+
+/** Short list of values as tags, with "+N" when more exist. */
+export function Chips({ values, more = 0 }: { values: string[]; more?: number }) {
+  if (values.length === 0) return <span className="muted">—</span>;
+  return (
+    <div className="tag-cloud">
+      {values.map((v) => (
+        <span key={v} className="tag">
+          {v}
+        </span>
+      ))}
+      {more > 0 && <span className="tag tag-more">+{more}</span>}
     </div>
   );
 }

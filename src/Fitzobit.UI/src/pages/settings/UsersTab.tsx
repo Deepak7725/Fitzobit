@@ -8,8 +8,8 @@ import { Badge, Card, EmptyState, ErrorPanel, Loading } from '../../components/u
 import { Modal, useToast } from '../../components/feedback';
 
 const ROLE_HELP: Record<string, string> = {
-  Admin: 'Everything, including users, plans, catalogue re-sync and the audit log.',
-  Manager: 'Upload, customers, delivery groups, export and catalogue (view).',
+  Admin: 'Everything, including users, drop-down values and the audit log.',
+  Manager: 'Customers (add, edit, pause), delivery groups and export.',
 };
 
 /** User administration (Admin only; the API enforces this too). */

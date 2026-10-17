@@ -27,7 +27,7 @@ public class WebSecurityTests
         Assert.True(state.GetProperty("setupAllowedHere").GetBoolean());
         Assert.False(state.GetProperty("authenticated").GetBoolean());
 
-        foreach (var url in new[] { "/api/customers", "/api/dashboard", "/api/catalogue", "/api/imports", "/api/delivery-groups", "/api/settings", "/api/users", "/api/system" })
+        foreach (var url in new[] { "/api/customers", "/api/dashboard", "/api/dictionaries", "/api/delivery-groups", "/api/settings", "/api/users", "/api/system" })
             HttpAssert.Status(HttpStatusCode.Unauthorized, await client.GetAsync(url));
         HttpAssert.Status(HttpStatusCode.Unauthorized, await client.PostAsync("/api/customers/export", new { scope = "All" }));
     }
@@ -43,7 +43,7 @@ public class WebSecurityTests
         Assert.True(state.GetProperty("authenticated").GetBoolean());
         Assert.Equal(("owner", "Admin"), (state.GetProperty("user").GetProperty("userName").GetString(), state.GetProperty("user").GetProperty("role").GetString()));
 
-        foreach (var url in new[] { "/api/users", "/api/audit", "/api/audit/actions", "/api/system", "/api/catalogue/plan-aliases", "/api/customers", "/api/settings" })
+        foreach (var url in new[] { "/api/users", "/api/audit", "/api/audit/actions", "/api/system", "/api/dictionaries/MealType", "/api/customers", "/api/settings" })
             HttpAssert.Status(HttpStatusCode.OK, await admin.GetAsync(url));
 
         // The first admin is attributed to themselves (not "anonymous") and counts as signed in.
@@ -139,21 +139,27 @@ public class WebSecurityTests
         var admin = await host.SetupAdminAsync();
         var manager = await CreateManagerAsync(host, admin);
 
-        foreach (var url in new[] { "/api/customers", "/api/customers/filter-options", "/api/dashboard", "/api/catalogue", "/api/imports", "/api/delivery-groups", "/api/settings" })
+        foreach (var url in new[] { "/api/customers", "/api/customers/filter-options", "/api/dashboard", "/api/dictionaries", "/api/delivery-groups", "/api/settings" })
             HttpAssert.Status(HttpStatusCode.OK, await manager.GetAsync(url));
-        HttpAssert.Status(HttpStatusCode.OK, await manager.PostAsync("/api/delivery-groups", new { name = "Coimbatore North" }));
+        HttpAssert.Status(HttpStatusCode.OK, await manager.PostAsync("/api/delivery-groups", new { count = 2 }));
 
         var export = await manager.PostAsync("/api/customers/export", new { scope = "Filtered", filter = new { pincode = "641002" } });
         HttpAssert.Status(HttpStatusCode.OK, export);
         Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", export.Content.Headers.ContentType?.MediaType);
         Assert.Equal("0", export.Headers.GetValues("X-Export-Rows").Single());
+        var pdf = await manager.PostAsync("/api/customers/export",
+            new { scope = "Filtered", format = "Pdf", filter = new { pincode = "641002" }, columns = new[] { "customerName", "phone" } });
+        HttpAssert.Status(HttpStatusCode.OK, pdf);
+        Assert.Equal("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString((await pdf.Content.ReadAsByteArrayAsync())[..4]));
+        HttpAssert.Status(HttpStatusCode.Conflict, await manager.PostAsync("/api/customers/export", new { columns = new[] { "secret" } }));
 
-        foreach (var url in new[] { "/api/users", "/api/audit", "/api/system", "/api/catalogue/plan-aliases" })
+        foreach (var url in new[] { "/api/users", "/api/audit", "/api/system", "/api/dictionaries/MealType" })
             HttpAssert.Status(HttpStatusCode.Forbidden, await manager.GetAsync(url));
         HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PostAsync("/api/users",
             new { userName = "sneaky", displayName = "Sneaky", role = "Admin", password = "Sneaky-Pass-99" }));
-        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PutAsync("/api/catalogue/plans/1/status", new { active = false }));
-        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PostAsync("/api/catalogue/resync", new { }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PostAsync("/api/dictionaries/MealType", new { displayName = "Sneaky Bowl" }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PutAsync("/api/dictionaries/entries/1", new { displayName = "Renamed", isActive = false }));
 
         var me = await manager.RefreshAsync();
         Assert.Equal("Manager", me.GetProperty("user").GetProperty("role").GetString());
@@ -171,14 +177,14 @@ public class WebSecurityTests
 
         var token = admin.Http.DefaultRequestHeaders.GetValues("X-XSRF-TOKEN").Single();
         admin.Http.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
-        HttpAssert.Status(HttpStatusCode.BadRequest, await admin.PostAsync("/api/delivery-groups", new { name = "No Token Group" }));
+        HttpAssert.Status(HttpStatusCode.BadRequest, await admin.PostAsync("/api/delivery-groups", new { count = 1, notes = "No Token Group" }));
 
         admin.Http.DefaultRequestHeaders.Add("X-XSRF-TOKEN", "forged-token");
-        HttpAssert.Status(HttpStatusCode.BadRequest, await admin.PostAsync("/api/delivery-groups", new { name = "Forged Token Group" }));
+        HttpAssert.Status(HttpStatusCode.BadRequest, await admin.PostAsync("/api/delivery-groups", new { count = 1, notes = "Forged Token Group" }));
 
         admin.Http.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
         admin.Http.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token);
-        HttpAssert.Status(HttpStatusCode.OK, await admin.PostAsync("/api/delivery-groups", new { name = "With Token Group" }));
+        HttpAssert.Status(HttpStatusCode.OK, await admin.PostAsync("/api/delivery-groups", new { count = 1, notes = "With Token Group" }));
 
         var groups = await (await admin.GetAsync("/api/delivery-groups")).Content.ReadAsStringAsync();
         Assert.Contains("With Token Group", groups);
@@ -269,7 +275,7 @@ public class WebSecurityTests
         var body = await error.Content.ReadAsStringAsync();
         Assert.Contains("reference", body);
         Assert.DoesNotContain("Secret internal detail", body);
-        Assert.DoesNotContain("Data Source", body);
+        Assert.DoesNotContain("secret-password", body);
         Assert.DoesNotContain("   at ", body);
 
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync("/api/does-not-exist"));
@@ -285,8 +291,9 @@ public class WebSecurityTests
         var settings = JsonDocument.Parse(body).RootElement;
         Assert.Equal("WhatsApp integration not configured", settings.GetProperty("whatsApp").GetProperty("message").GetString());
         Assert.False(settings.GetProperty("whatsApp").GetProperty("configured").GetBoolean());
-        Assert.Equal("Fitzobit_WhatsApp_Catalogue.xlsx", settings.GetProperty("catalogue").GetProperty("fileName").GetString());
-        Assert.DoesNotContain("Data Source", body);
+        Assert.Contains("Delivery Time", settings.GetProperty("export").GetProperty("columns").EnumerateArray().Select(c => c.GetString()));
+        Assert.DoesNotContain("Password=", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Host=", body);
         Assert.DoesNotContain("accessToken", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fitzobit-web-test", body);
     }

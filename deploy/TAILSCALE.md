@@ -2,7 +2,7 @@
 
 Fitzobit runs on this PC, and Tailscale Funnel gives it a permanent public address such as
 `https://my-pc.tail1234.ts.net`, with a real HTTPS certificate. No credit card, no domain and no router changes.
-The data stays on this PC in `data\fitzobit.db`.
+The data stays on this PC in the local PostgreSQL database `fitzobit` (the connection string comes from the user secret, see the README).
 
 **Trade-off:** the site is online only while this PC is on, awake and signed in.
 
@@ -67,7 +67,7 @@ Windows, and starts it now. Remove it with `deploy\install-autostart.ps1 -Remove
 - **Share the link:** give Managers the `https://….ts.net` address, then add each of them under **Settings → Users**.
 - **Update after code changes:** `powershell -ExecutionPolicy Bypass -File deploy\local-server.ps1 -Publish`. It stops the running copy, rebuilds and restarts the task.
 - **Logs:** `data\logs\server.log` (current run) and `server.previous.log`.
-- **Backups:** copy the `data` folder somewhere safe regularly (another drive, or cloud storage you trust). It holds customer names and phone numbers.
+- **Backups:** back up the `fitzobit` database regularly, e.g. `pg_dump -U postgres -Fc fitzobit > fitzobit.backup`, and keep the file somewhere safe. It holds customer names and phone numbers.
 
 ## Security notes
 
