@@ -98,6 +98,7 @@ public class GeocodingProviderTests
         var query = Uri.UnescapeDataString(handler.Requests.Single().Query);
         Assert.Contains("postalcode=641002", query);
         Assert.DoesNotContain("q=", query);
+        Assert.DoesNotContain("city=", query); // with city= Nominatim returns the city, not the pincode area
     }
 
     [Fact]

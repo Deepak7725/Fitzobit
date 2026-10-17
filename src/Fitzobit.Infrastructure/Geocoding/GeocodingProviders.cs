@@ -55,11 +55,10 @@ public sealed class NominatimGeocodingService(HttpClient http, NominatimRequestG
     {
         var o = options.Value.Nominatim;
         var p = new List<string> { "format=jsonv2", "limit=1", "addressdetails=0", "accept-language=en", $"countrycodes={Uri.EscapeDataString(query.CountryCode)}" };
+        // No city= next to postalcode: Nominatim then answers with the city itself (rejected as too coarse). The viewbox
+        // below already keeps the pincode inside the service city's area.
         if (query.Kind == GeocodeQueryKind.PostalCode && !string.IsNullOrWhiteSpace(query.PostalCode))
-        {
             p.Add($"postalcode={Uri.EscapeDataString(query.PostalCode)}");
-            if (!string.IsNullOrWhiteSpace(query.City)) p.Add($"city={Uri.EscapeDataString(query.City)}");
-        }
         else p.Add($"q={Uri.EscapeDataString(query.Text)}");
         if (query.Kind != GeocodeQueryKind.City && query.Bounds is { } b)
             p.Add(FormattableString.Invariant($"viewbox={b.West},{b.North},{b.East},{b.South}&bounded=1"));
