@@ -26,7 +26,7 @@ export default function Layout() {
     <div className={`shell ${menuOpen ? 'menu-open' : ''}`}>
       <aside className="sidebar" aria-label="Main navigation">
         <div className="brand">
-          <img src="/favicon.svg" alt="" width={32} height={32} />
+          <span className="brand-logo"><img src="/logo-mark.png" alt="" width={34} height={34} /></span>
           <div>
             <span className="brand-name">Fitzobit</span>
             <span className="brand-tag">Delivery Management</span>

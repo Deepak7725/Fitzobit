@@ -91,11 +91,8 @@ function AuthScreen({ children, title, subtitle }: { children: ReactNode; title?
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-brand">
-          <img src="/favicon.svg" alt="" width={40} height={40} />
-          <div>
-            <span className="brand-name">Fitzobit</span>
-            <span className="brand-tag">Delivery Management</span>
-          </div>
+          <img src="/logo.png" alt="Fitzobit" width={180} height={156} />
+          <span className="brand-tag">Delivery Management</span>
         </div>
         {title && <h1>{title}</h1>}
         {subtitle && <p className="muted">{subtitle}</p>}
