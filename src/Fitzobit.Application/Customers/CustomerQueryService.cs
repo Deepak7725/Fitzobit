@@ -47,24 +47,32 @@ public sealed class CustomerFilter
 }
 
 /// <summary>A package as the customers list shows it.</summary>
+/// <param name="PausedCount">Paused days that extended the end date.</param>
+/// <param name="PausedDays">Every paused day of the package.</param>
 public sealed record PackageSummaryDto(int Id, string Preference, string MealType, int Quantity, string Frequency, DateOnly StartDate, DateOnly EndDate,
-    int PausedCount)
+    int PausedCount, int PausedDays)
 {
     /// <summary>"Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026)"</summary>
     public string Text => CustomerPackageService.Text(Preference, MealType, Quantity, Frequency, StartDate, EndDate);
 }
 
+/// <summary>A note as the customers list and exports show it; <see cref="CreatedBy"/> is the writer's display name.</summary>
+public sealed record NoteSummaryDto(int Id, string Text, DateTime CreatedAt, string? CreatedBy);
+
 /// <param name="StartDate">The earliest start of the customer's packages.</param>
 /// <param name="EndDate">The latest end of the customer's packages.</param>
+/// <param name="Notes">All notes, newest first.</param>
 public sealed record CustomerListItemDto(
     int Id,
     string CustomerId,
     string CustomerName,
     string PhoneNumber,
+    string? AlternatePhoneNumber,
     string? Address,
     string? Pincode,
     TimeOnly? PreferredDeliveryTime,
     IReadOnlyList<PackageSummaryDto> Packages,
+    IReadOnlyList<NoteSummaryDto> Notes,
     DateOnly? StartDate,
     DateOnly? EndDate,
     string Status,
@@ -108,6 +116,7 @@ public sealed record CustomerPackageDto(
     int FrequencyId,
     string Frequency,
     int? FrequencyDeliveryDays,
+    bool CanPause,
     DateOnly StartDate,
     DateOnly EndDate,
     int? DeliveryDaysLeft,
@@ -126,6 +135,7 @@ public sealed record CustomerDetailDto(
     string CustomerName,
     string PhoneNumber,
     string? NormalizedPhoneNumber,
+    string? AlternatePhoneNumber,
     string? Address,
     string? Pincode,
     string? Locality,
@@ -164,6 +174,7 @@ public sealed class CustomerRow
     public string CustomerName { get; init; } = "";
     public string PhoneNumber { get; init; } = "";
     public string? NormalizedPhoneNumber { get; init; }
+    public string? AlternatePhoneNumber { get; init; }
     public string? Address { get; init; }
     public string? Pincode { get; init; }
     public TimeOnly? PreferredDeliveryTime { get; init; }
@@ -196,6 +207,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             CustomerName = c.CustomerName,
             PhoneNumber = c.PhoneNumber,
             NormalizedPhoneNumber = c.NormalizedPhoneNumber,
+            AlternatePhoneNumber = c.AlternatePhoneNumber,
             Address = c.Address,
             Pincode = c.Pincode,
             PreferredDeliveryTime = c.PreferredDeliveryTime,
@@ -299,9 +311,11 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         var rows = ApplyFilter(Rows(), filter);
         var total = await rows.CountAsync(ct);
         var pageRows = await ApplySort(rows, filter.Sort, filter.Desc).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
-        var packages = await PackageSummariesAsync(pageRows.Select(r => r.Id).ToList(), ct);
-        var items = pageRows.Select(r => new CustomerListItemDto(r.Id, r.CustomerId, r.CustomerName, r.PhoneNumber, r.Address, r.Pincode,
-                r.PreferredDeliveryTime, packages.GetValueOrDefault(r.Id) ?? [], r.StartDate, r.EndDate, r.Status, r.StatusCode, r.GroupId,
+        var ids = pageRows.Select(r => r.Id).ToList();
+        var packages = await PackageSummariesAsync(ids, ct);
+        var notes = await NoteSummariesAsync(ids, ct);
+        var items = pageRows.Select(r => new CustomerListItemDto(r.Id, r.CustomerId, r.CustomerName, r.PhoneNumber, r.AlternatePhoneNumber,
+                r.Address, r.Pincode, r.PreferredDeliveryTime, packages.GetValueOrDefault(r.Id) ?? [], notes.GetValueOrDefault(r.Id) ?? [], r.StartDate, r.EndDate, r.Status, r.StatusCode, r.GroupId,
                 r.GroupNumber, r.Latitude, r.Longitude, r.GeocodeStatus.ToString(), r.GeocodeMatchLevel?.ToString(), r.CreatedAt, r.UpdatedAt))
             .ToList();
         return new PagedResult<CustomerListItemDto>(items, total, page, pageSize);
@@ -321,13 +335,35 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
                 {
                     p.CustomerId,
                     Dto = new PackageSummaryDto(p.Id, p.Preference!.DisplayName, p.MealType!.DisplayName, p.Quantity, p.Frequency!.DisplayName,
-                        p.StartDate, p.EndDate, p.PausedCount)
+                        p.StartDate, p.EndDate, p.PausedCount, p.Pauses.Count())
                 })
                 .ToListAsync(ct);
             foreach (var p in packages)
             {
                 if (!result.TryGetValue(p.CustomerId, out var list)) result[p.CustomerId] = list = [];
                 list.Add(p.Dto);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>The notes of the given customers (by customer id), newest first, with the writers' display names.</summary>
+    public async Task<Dictionary<int, List<NoteSummaryDto>>> NoteSummariesAsync(IReadOnlyList<int> customerIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<int, List<NoteSummaryDto>>();
+        var names = await db.Users.AsNoTracking().ToDictionaryAsync(u => u.UserName, u => u.DisplayName, StringComparer.OrdinalIgnoreCase, ct);
+        foreach (var batch in customerIds.Distinct().Chunk(2000))
+        {
+            var ids = batch.ToList();
+            var notes = await db.CustomerNotes.AsNoTracking()
+                .Where(n => ids.Contains(n.CustomerId))
+                .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id)
+                .Select(n => new { n.CustomerId, n.Id, n.Text, n.CreatedAt, n.CreatedBy })
+                .ToListAsync(ct);
+            foreach (var n in notes)
+            {
+                if (!result.TryGetValue(n.CustomerId, out var list)) result[n.CustomerId] = list = [];
+                list.Add(new NoteSummaryDto(n.Id, n.Text, n.CreatedAt, n.CreatedBy != null ? names.GetValueOrDefault(n.CreatedBy, n.CreatedBy) : null));
             }
         }
         return result;
@@ -371,13 +407,14 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         var packageDtos = packages.Select(p =>
         {
             var pauses = p.Pauses.OrderBy(x => x.PausedDate)
-                .Select(x => new PackagePauseDto(x.PausedDate, x.PreviousEndDate, x.NewEndDate, x.Reason, x.CreatedAt, x.CreatedBy)).ToList();
+                .Select(x => new PackagePauseDto(x.PausedDate, x.PreviousEndDate, x.NewEndDate, x.ExtendedEndDate, x.Reason, x.CreatedAt,
+                    x.CreatedBy)).ToList();
             // Delivery days still to come (today included), not counting days that are paused.
             var from = p.StartDate > today ? p.StartDate : today;
             int? daysLeft = p.EndDate < today ? null
                 : calendar.CountDeliveryDays(from, p.EndDate) - pauses.Count(x => x.PausedDate >= from && x.PausedDate <= p.EndDate);
             return new CustomerPackageDto(p.Id, p.PreferenceId, p.Preference!.DisplayName, p.MealTypeId, p.MealType!.DisplayName, p.Quantity,
-                p.FrequencyId, p.Frequency!.DisplayName, p.Frequency.NumericValue, p.StartDate, p.EndDate, daysLeft, p.PausedCount,
+                p.FrequencyId, p.Frequency!.DisplayName, p.Frequency.NumericValue, p.Frequency.CanPause, p.StartDate, p.EndDate, daysLeft, p.PausedCount,
                 CustomerPackage.MaxPauses, pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy);
         }).ToList();
 
@@ -395,7 +432,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             .OrderByDescending(a => a.OccurredAt).ThenByDescending(a => a.Id).Take(50)
             .ToListAsync(ct);
 
-        return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.Address, c.Pincode, c.Locality,
+        return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.AlternatePhoneNumber, c.Address, c.Pincode, c.Locality,
             c.City, c.PreferredDeliveryTime, packageDtos, noteDtos, c.StatusId, c.Status!.DisplayName, c.Status.Code, c.Latitude, c.Longitude,
             c.GeocodeStatus.ToString(), c.GeocodeMatchLevel?.ToString(), c.GeocodeMessage, c.GeocodeSource, c.GeocodedAt, c.GeocodeNextAttemptAt,
             c.LegacyPlan, current?.DeliveryGroupId, current?.GroupNumber, current?.AssignedAt, current?.AssignedBy, history,

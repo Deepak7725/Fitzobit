@@ -41,6 +41,26 @@ public class CustomerNoteTests
     }
 
     [Fact]
+    public async Task Every_note_shows_in_the_customers_list_newest_first()
+    {
+        using var test = new TestDatabase();
+        int id;
+        await using (var db = test.CreateContext())
+        {
+            id = (await test.Commands(db).CreateAsync(test.NewCustomer(note: "Gate code 1234"))).Id;
+            await test.Commands(db).CreateAsync(test.NewCustomer("Karthik N", "9123456780"));
+        }
+        test.Clock.UtcNow = test.Clock.UtcNow.AddDays(1);
+        await using (var db = test.CreateContext()) await test.Notes(db).AddAsync(id, new SaveNoteRequest("Less spice"));
+
+        await using var check = test.CreateContext();
+        var list = await test.Queries(check).ListAsync(new CustomerFilter { Sort = "customerId" }, 1, 25);
+        Assert.Equal(["Less spice", "Gate code 1234"], list.Items[0].Notes.Select(n => n.Text));
+        Assert.All(list.Items[0].Notes, n => Assert.Equal("test-user", n.CreatedBy)); // no Users row: the user name is shown
+        Assert.Empty(list.Items[1].Notes);
+    }
+
+    [Fact]
     public async Task The_writer_edits_and_deletes_own_notes_and_changes_are_audited()
     {
         using var test = new TestDatabase();

@@ -22,7 +22,7 @@ import {
   type PackageFormValues,
 } from '../components/CustomerForm';
 
-const EMPTY: CustomerFormValues = { customerName: '', phoneNumber: '', address: '', pincode: '', deliveryTime: '', statusId: '' };
+const EMPTY: CustomerFormValues = { customerName: '', phoneNumber: '', alternatePhoneNumber: '', address: '', pincode: '', deliveryTime: '', statusId: '' };
 const MAX_NOTE = 2000;
 
 interface PackageDraft {
@@ -216,8 +216,8 @@ export default function AddCustomerPage() {
                 })}
               </dl>
               <p className="footnote">
-                <Info size={12} /> Deliveries run Monday to Saturday. Sundays are not counted. Pausing a day pauses every package running that day; the
-                meal moves to the next delivery day.
+                <Info size={12} /> Deliveries run Monday to Saturday. Sundays are not counted. Only packages whose frequency can pause (e.g. Monthly)
+                can pause days; the first 3 paused days move the end date to the next delivery day.
               </p>
             </Card>
             <Card title={<><MapPinned size={18} /> Map location</>}>

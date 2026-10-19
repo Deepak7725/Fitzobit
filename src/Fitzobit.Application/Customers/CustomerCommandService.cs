@@ -23,6 +23,10 @@ public class SaveCustomerRequest
 {
     public string CustomerName { get; set; } = "";
     public string PhoneNumber { get; set; } = "";
+
+    /// <summary>Optional second number; same rules as <see cref="PhoneNumber"/> and different from it.</summary>
+    public string? AlternatePhoneNumber { get; set; }
+
     public string? Address { get; set; }
     public string? Pincode { get; set; }
 
@@ -119,6 +123,7 @@ public sealed partial class CustomerCommandService(
         var changes = new ChangeSet();
         changes.Track("CustomerName", customer.CustomerName, v.Name);
         changes.Track("PhoneNumber", customer.PhoneNumber, v.Phone);
+        changes.Track("AlternatePhoneNumber", customer.AlternatePhoneNumber, v.AlternatePhone);
         changes.Track("Address", customer.Address, v.Address);
         changes.Track("Pincode", customer.Pincode, v.Pincode);
         changes.Track("PreferredDeliveryTime", customer.PreferredDeliveryTime, v.DeliveryTime);
@@ -139,6 +144,7 @@ public sealed partial class CustomerCommandService(
     private sealed record Validated(
         string Name,
         string Phone,
+        string? AlternatePhone,
         string Address,
         string? NormalizedAddress,
         string? Pincode,
@@ -164,6 +170,17 @@ public sealed partial class CustomerCommandService(
             case PhoneCheck.ValidMobile: break;
             case PhoneCheck.Landline: warnings.Add("The phone number looks like a landline, not a mobile number."); break;
             default: errors.Add("Invalid phone number: expected a 10-digit Indian mobile number."); break;
+        }
+
+        var alternate = PhoneNumberValidator.Validate(r.AlternatePhoneNumber);
+        switch (alternate.Check)
+        {
+            case PhoneCheck.Missing: break;
+            case PhoneCheck.ValidMobile or PhoneCheck.Landline when alternate.Normalized == phone.Normalized:
+                errors.Add("The alternative phone number must be different from the phone number."); break;
+            case PhoneCheck.ValidMobile: break;
+            case PhoneCheck.Landline: warnings.Add("The alternative phone number looks like a landline, not a mobile number."); break;
+            default: errors.Add("Invalid alternative phone number: expected a 10-digit Indian mobile number."); break;
         }
 
         var address = string.IsNullOrWhiteSpace(r.Address) ? null : r.Address.Trim();
@@ -194,7 +211,8 @@ public sealed partial class CustomerCommandService(
 
         // Minutes are enough for a delivery time; seconds from the client are dropped.
         var time = r.PreferredDeliveryTime!.Value;
-        return new Validated(name, r.PhoneNumber.Trim(), address!, location.NormalizedLocation, pincode, location.Locality, location.City,
+        var alternatePhone = alternate.Check == PhoneCheck.Missing ? null : r.AlternatePhoneNumber!.Trim();
+        return new Validated(name, r.PhoneNumber.Trim(), alternatePhone, address!, location.NormalizedLocation, pincode, location.Locality, location.City,
             new TimeOnly(time.Hour, time.Minute), status);
     }
 
@@ -202,6 +220,7 @@ public sealed partial class CustomerCommandService(
     {
         customer.CustomerName = v.Name;
         customer.SetPhoneNumber(v.Phone);
+        customer.AlternatePhoneNumber = v.AlternatePhone;
         customer.SetAddress(v.Address, v.NormalizedAddress);
         customer.Pincode = v.Pincode;
         customer.Locality = v.Locality;
@@ -214,6 +233,7 @@ public sealed partial class CustomerCommandService(
     {
         ["CustomerName"] = c.CustomerName,
         ["PhoneNumber"] = c.PhoneNumber,
+        ["AlternatePhoneNumber"] = c.AlternatePhoneNumber,
         ["Address"] = c.Address,
         ["Pincode"] = c.Pincode,
         ["PreferredDeliveryTime"] = c.PreferredDeliveryTime,

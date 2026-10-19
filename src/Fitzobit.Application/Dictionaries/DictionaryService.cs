@@ -10,8 +10,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Fitzobit.Application.Dictionaries;
 
-/// <summary>An active drop-down value. <see cref="NumericValue"/> is the delivery-day count for frequencies.</summary>
-public sealed record DictionaryOptionDto(int Id, string Code, string DisplayName, int SortOrder, int? NumericValue);
+/// <summary>An active drop-down value. <see cref="NumericValue"/> is the delivery-day count for frequencies; <see cref="CanPause"/>
+/// whether packages of that frequency may pause.</summary>
+public sealed record DictionaryOptionDto(int Id, string Code, string DisplayName, int SortOrder, int? NumericValue, bool CanPause);
 
 /// <summary>Every customer drop-down, active values only, in display order.</summary>
 public sealed record DictionaryOptionsDto(
@@ -30,6 +31,7 @@ public sealed record DictionaryEntryDto(
     bool IsActive,
     bool IsSystem,
     int? NumericValue,
+    bool CanPause,
     int CustomerCount,
     DateTime CreatedAt,
     DateTime UpdatedAt,
@@ -41,6 +43,9 @@ public sealed class SaveDictionaryEntryRequest
 
     /// <summary>Frequency: delivery days per package. Ignored for other types.</summary>
     public int? NumericValue { get; set; }
+
+    /// <summary>Frequency: whether its packages may pause delivery days. Null keeps the current setting (new values: no).</summary>
+    public bool? CanPause { get; set; }
 
     public bool IsActive { get; set; } = true;
 }
@@ -57,7 +62,7 @@ public sealed class DictionaryService(IFitzobitDbContext db, IAuditLogger audit)
     {
         var entries = await db.DictionaryEntries.AsNoTracking().Where(e => e.IsActive)
             .OrderBy(e => e.SortOrder).ThenBy(e => e.DisplayName)
-            .Select(e => new { e.DictionaryType, Option = new DictionaryOptionDto(e.Id, e.Code, e.DisplayName, e.SortOrder, e.NumericValue) })
+            .Select(e => new { e.DictionaryType, Option = new DictionaryOptionDto(e.Id, e.Code, e.DisplayName, e.SortOrder, e.NumericValue, e.CanPause) })
             .ToListAsync(ct);
         List<DictionaryOptionDto> Of(DictionaryType type) => entries.Where(e => e.DictionaryType == type).Select(e => e.Option).ToList();
         return new DictionaryOptionsDto(Of(DictionaryType.Preference), Of(DictionaryType.MealType), Of(DictionaryType.Frequency),
@@ -88,7 +93,8 @@ public sealed class DictionaryService(IFitzobitDbContext db, IAuditLogger audit)
             DisplayName = name,
             SortOrder = maxOrder + 10,
             IsActive = request.IsActive,
-            NumericValue = ValidateNumber(type, request.NumericValue)
+            NumericValue = ValidateNumber(type, request.NumericValue),
+            CanPause = type == DictionaryType.Frequency && request.CanPause == true
         };
         db.DictionaryEntries.Add(entry);
         audit.RecordChange(AuditActions.DictionaryEntryCreated, nameof(DictionaryEntry), $"{type}:{code}", $"{Title(type)} added: {name}",
@@ -102,16 +108,19 @@ public sealed class DictionaryService(IFitzobitDbContext db, IAuditLogger audit)
         var entry = await FindAsync(id, ct);
         var name = await ValidateNameAsync(entry.DictionaryType, request.DisplayName, id, ct);
         var number = ValidateNumber(entry.DictionaryType, request.NumericValue);
+        var canPause = entry.DictionaryType == DictionaryType.Frequency && (request.CanPause ?? entry.CanPause);
         if (entry.IsActive && !request.IsActive) await EnsureCanDeactivateAsync(entry, ct);
 
         var changes = new ChangeSet();
         changes.Track("DisplayName", entry.DisplayName, name);
         changes.Track("NumericValue", entry.NumericValue, number);
+        changes.Track("CanPause", entry.CanPause, canPause);
         changes.Track("IsActive", entry.IsActive, request.IsActive);
         if (changes.HasChanges)
         {
             entry.DisplayName = name;
             entry.NumericValue = number;
+            entry.CanPause = canPause;
             entry.IsActive = request.IsActive;
             audit.RecordChange(AuditActions.DictionaryEntryUpdated, nameof(DictionaryEntry), $"{entry.DictionaryType}:{entry.Code}",
                 $"{Title(entry.DictionaryType)} updated: {name} ({string.Join(", ", changes.New.Keys)})", changes.Old, changes.New);
@@ -239,11 +248,12 @@ public sealed class DictionaryService(IFitzobitDbContext db, IAuditLogger audit)
         ["DisplayName"] = e.DisplayName,
         ["Code"] = e.Code,
         ["NumericValue"] = e.NumericValue,
+        ["CanPause"] = e.CanPause,
         ["IsActive"] = e.IsActive
     };
 
     private static DictionaryEntryDto ToDto(DictionaryEntry e, int customers) =>
-        new(e.Id, e.DictionaryType.ToString(), e.Code, e.DisplayName, e.SortOrder, e.IsActive, e.IsSystem, e.NumericValue, customers,
+        new(e.Id, e.DictionaryType.ToString(), e.Code, e.DisplayName, e.SortOrder, e.IsActive, e.IsSystem, e.NumericValue, e.CanPause, customers,
             e.CreatedAt, e.UpdatedAt, e.UpdatedBy);
 
     private static string Users(DictionaryType type, int count) =>

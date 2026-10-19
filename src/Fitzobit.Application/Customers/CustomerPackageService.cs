@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Fitzobit.Application.Customers;
 
-/// <summary>The fields of a package entered on the Add Customer screen or the package dialog. The end date is never taken from the client.</summary>
+/// <summary>The fields of a package entered on the Add Customer screen or the package dialog. A new package's end date is always calculated.</summary>
 public class SavePackageRequest
 {
     public int? PreferenceId { get; set; }
@@ -29,14 +29,21 @@ public sealed class UpdatePackageRequest : SavePackageRequest
 
     /// <summary>Must be true when the start date or frequency changes, because the end date is recalculated.</summary>
     public bool ConfirmScheduleChange { get; set; }
+
+    /// <summary>
+    /// The end date typed in the package dialog (a delivery day on or after the start date). Null, or the same as the calculated
+    /// end date, keeps the calculation.
+    /// </summary>
+    public DateOnly? EndDate { get; set; }
 }
 
 public sealed record PackageSavedDto(int Id, DateOnly StartDate, DateOnly EndDate, int PausedCount);
 
 /// <summary>
 /// A customer's packages: add, edit and delete. Each package has its own preference, meal type, quantity, frequency and dates; the
-/// end date is calculated in delivery days (<see cref="DeliveryScheduleService"/>) and extended by the package's pauses.
-/// A package can be deleted only before its first delivery day.
+/// end date is calculated in delivery days (<see cref="DeliveryScheduleService"/>) and extended by the package's first
+/// <see cref="CustomerPackage.MaxPauses"/> pauses; when editing it can also be set by hand. A package can be deleted only before its
+/// first delivery day.
 /// </summary>
 public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryService dictionaries, DeliveryScheduleService schedule, IAuditLogger audit, IClock clock)
 {
@@ -73,12 +80,17 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         {
             if (!request.ConfirmScheduleChange)
                 throw new BusinessRuleException("Changing the start date or frequency recalculates the end date. Confirm the change to continue.");
-            var pausedDates = package.Pauses.Select(p => p.PausedDate).ToList();
-            endDate = schedule.CalculateEndDate(v.StartDate, v.Frequency, pausedDates);
-            // Only pauses inside the new period count towards its limit.
-            pausedCount = pausedDates.Count(d => d >= v.StartDate && d <= endDate);
-            if (pausedCount > CustomerPackage.MaxPauses)
-                throw new BusinessRuleException($"The new dates would include {pausedCount} paused days; a package allows {CustomerPackage.MaxPauses}.");
+            // Only the first paused days inside the new period extend it, as when pausing.
+            var extending = package.Pauses.Select(p => p.PausedDate).Where(d => d >= v.StartDate).Order().Take(CustomerPackage.MaxPauses).ToList();
+            endDate = schedule.CalculateEndDate(v.StartDate, v.Frequency, extending);
+            pausedCount = extending.Count(d => d <= endDate);
+        }
+        if (request.EndDate is { } typed && typed != endDate)
+        {
+            if (typed < v.StartDate) throw new BusinessRuleException("The end date cannot be before the start date.");
+            if (!schedule.Calendar.IsDeliveryDay(typed))
+                throw new BusinessRuleException($"{typed:dd MMM yyyy} is a Sunday. The end date must be a delivery day (Monday to Saturday).");
+            endDate = typed;
         }
 
         var changes = new ChangeSet();

@@ -137,6 +137,8 @@ export interface DictionaryOption {
   sortOrder: number;
   /** Frequency: delivery days per package. */
   numericValue: number | null;
+  /** Frequency: packages of this frequency may pause delivery days. */
+  canPause: boolean;
 }
 
 export interface DictionaryOptions {
@@ -155,6 +157,7 @@ export interface DictionaryEntry {
   isActive: boolean;
   isSystem: boolean;
   numericValue: number | null;
+  canPause: boolean;
   customerCount: number;
   createdAt: string;
   updatedAt: string;
@@ -164,6 +167,8 @@ export interface DictionaryEntry {
 export interface SaveDictionaryEntry {
   displayName: string;
   numericValue: number | null;
+  /** Frequency only; omitted keeps the current setting. */
+  canPause?: boolean;
   isActive: boolean;
 }
 
@@ -200,16 +205,27 @@ export interface CustomerFilter {
   desc?: boolean;
 }
 
+export interface NoteSummary {
+  id: number;
+  text: string;
+  createdAt: string;
+  /** The writer's display name. */
+  createdBy: string | null;
+}
+
 export interface CustomerListItem {
   id: number;
   customerId: string;
   customerName: string;
   phoneNumber: string;
+  alternatePhoneNumber: string | null;
   address: string | null;
   pincode: string | null;
   /** "HH:mm:ss" */
   preferredDeliveryTime: string | null;
   packages: PackageSummary[];
+  /** All notes, newest first. */
+  notes: NoteSummary[];
   /** Earliest start / latest end of the customer's packages. */
   startDate: string | null;
   endDate: string | null;
@@ -277,6 +293,8 @@ export interface PackageSummary {
   startDate: string;
   endDate: string;
   pausedCount: number;
+  /** Every paused day (pausedCount counts only those that extended the end date). */
+  pausedDays: number;
   /** "Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026)" */
   text: string;
 }
@@ -291,9 +309,12 @@ export interface CustomerPackage {
   frequencyId: number;
   frequency: string;
   frequencyDeliveryDays: number | null;
+  /** The package's frequency allows pausing. */
+  canPause: boolean;
   startDate: string;
   endDate: string;
   deliveryDaysLeft: number | null;
+  /** Paused days that extended the end date (at most maxPauses); pauses lists every paused day. */
   pausedCount: number;
   maxPauses: number;
   pauses: CustomerPause[];
@@ -322,6 +343,8 @@ export interface CustomerPause {
   pausedDate: string;
   previousEndDate: string;
   newEndDate: string;
+  /** This pause moved the end date (only a package's first paused days do). */
+  extendedEndDate: boolean;
   reason: string | null;
   createdAt: string;
   createdBy: string | null;
@@ -333,6 +356,7 @@ export interface CustomerDetail {
   customerName: string;
   phoneNumber: string;
   normalizedPhoneNumber: string | null;
+  alternatePhoneNumber: string | null;
   address: string | null;
   pincode: string | null;
   locality: string | null;
@@ -369,6 +393,8 @@ export interface CustomerDetail {
 export interface SaveCustomerRequest {
   customerName: string;
   phoneNumber: string;
+  /** Optional second number. */
+  alternatePhoneNumber: string | null;
   address: string;
   pincode: string | null;
   /** "HH:mm:ss" */
@@ -376,7 +402,7 @@ export interface SaveCustomerRequest {
   statusId: number | null;
 }
 
-/** A package as entered. End date and paused count are always decided by the server. */
+/** A package as entered. A new package's end date and the paused count are always decided by the server. */
 export interface SavePackageRequest {
   preferenceId: number | null;
   mealTypeId: number | null;
@@ -397,6 +423,8 @@ export interface UpdateCustomerRequest extends SaveCustomerRequest {
 export interface UpdatePackageRequest extends SavePackageRequest {
   expectedUpdatedAt: string;
   confirmScheduleChange: boolean;
+  /** The end date as typed; the same as the calculated one keeps the calculation. */
+  endDate: string | null;
 }
 
 export interface CreateCustomerResult {
@@ -427,9 +455,21 @@ export interface SchedulePreview {
   frequency: string;
 }
 
+export interface PausedPackage {
+  packageId: number;
+  package: string;
+  previousEndDate: string;
+  newEndDate: string;
+  days: { date: string; extendedEndDate: boolean }[];
+  pausedCount: number;
+  extendingPausesLeft: number;
+}
+
 export interface PauseResult {
-  pausedDate: string;
-  packages: { packageId: number; package: string; previousEndDate: string; newEndDate: string; pausedCount: number; pausesLeft: number }[];
+  dates: string[];
+  packages: PausedPackage[];
+  /** Packages running on those days that cannot pause; they are still delivered. */
+  notPaused: string[];
 }
 
 export interface BulkResult {
@@ -712,8 +752,10 @@ export const api = {
   updateCustomer: (id: number, request: UpdateCustomerRequest) => send<UpdateCustomerResult>('PUT', `/api/customers/${id}`, request),
   schedule: (frequencyId: number, startDate: string, signal?: AbortSignal) =>
     get<SchedulePreview>(`/api/customers/schedule${query({ frequencyId, startDate })}`, signal),
-  /** Pauses the day for every package running on it. */
-  pauseCustomer: (id: number, date: string, reason: string | null) => send<PauseResult>('POST', `/api/customers/${id}/pauses`, { date, reason }),
+  /** Pauses the days for every pausable package running on them. */
+  pauseCustomer: (id: number, dates: string[], reason: string | null) => send<PauseResult>('POST', `/api/customers/${id}/pauses`, { dates, reason }),
+  /** What pauseCustomer would do, without saving. */
+  previewPause: (id: number, dates: string[]) => send<PauseResult>('POST', `/api/customers/${id}/pauses/preview`, { dates, reason: null }),
   addPackage: (customerId: number, request: SavePackageRequest) => send<PackageSaved>('POST', `/api/customers/${customerId}/packages`, request),
   updatePackage: (packageId: number, request: UpdatePackageRequest) => send<PackageSaved>('PUT', `/api/customers/packages/${packageId}`, request),
   deletePackage: (packageId: number) => send('DELETE', `/api/customers/packages/${packageId}`),

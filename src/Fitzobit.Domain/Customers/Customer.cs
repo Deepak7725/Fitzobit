@@ -17,6 +17,9 @@ public class Customer : IUserTracked
     public string PhoneNumber { get; private set; } = string.Empty;
     public string? NormalizedPhoneNumber { get; private set; }
 
+    /// <summary>Optional second phone number (as supplied); other customers may share it (e.g. family members).</summary>
+    public string? AlternatePhoneNumber { get; set; }
+
     /// <summary>Delivery address exactly as supplied.</summary>
     public string? Address { get; private set; }
     public string? NormalizedAddress { get; private set; }
@@ -124,11 +127,12 @@ public enum GeoMatchLevel
 
 /// <summary>
 /// One meal package (order) of a customer: what is delivered (preference, meal type, quantity), how often (frequency = number of
-/// delivery days) and when (start date; the end date is calculated and extended by pauses). A customer may have several.
+/// delivery days) and when (start date; the end date is calculated, may be set by hand, and is extended by pauses). A customer
+/// may have several.
 /// </summary>
 public class CustomerPackage : IUserTracked
 {
-    /// <summary>Delivery days that can be paused within one package.</summary>
+    /// <summary>Paused days that extend the end date; any further paused days are skipped without moving it.</summary>
     public const int MaxPauses = 3;
 
     public const int MaxQuantity = 20;
@@ -153,10 +157,10 @@ public class CustomerPackage : IUserTracked
     /// <summary>First delivery day (never a Sunday).</summary>
     public DateOnly StartDate { get; set; }
 
-    /// <summary>Last delivery day, calculated in delivery days and extended by pauses.</summary>
+    /// <summary>Last delivery day: calculated in delivery days (or set by hand) and extended by the first pauses.</summary>
     public DateOnly EndDate { get; set; }
 
-    /// <summary>Delivery days paused in this package (0–<see cref="MaxPauses"/>).</summary>
+    /// <summary>Paused days that extended the end date (0–<see cref="MaxPauses"/>); <see cref="Pauses"/> holds every paused day.</summary>
     public int PausedCount { get; set; }
 
     /// <summary>PostgreSQL row version (xmin): concurrent changes of the same package fail instead of overwriting each other.</summary>
@@ -174,8 +178,9 @@ public class CustomerPackage : IUserTracked
 }
 
 /// <summary>
-/// One paused delivery day of a package. The meal is not lost: the package end date moves to the next delivery day.
-/// Pausing a customer's day pauses every package running that day (one row per package).
+/// One paused delivery day of a package. For the package's first <see cref="CustomerPackage.MaxPauses"/> paused days the meal is
+/// not lost: the end date moves to the next delivery day. Later paused days are skipped and the end date stays
+/// (<see cref="NewEndDate"/> = <see cref="PreviousEndDate"/>). Only packages whose frequency allows pausing are paused.
 /// </summary>
 public class PackagePause
 {
@@ -189,6 +194,10 @@ public class PackagePause
 
     public DateOnly PreviousEndDate { get; set; }
     public DateOnly NewEndDate { get; set; }
+
+    /// <summary>Whether this pause moved the end date.</summary>
+    public bool ExtendedEndDate => NewEndDate != PreviousEndDate;
+
     public string? Reason { get; set; }
 
     public DateTime CreatedAt { get; set; }

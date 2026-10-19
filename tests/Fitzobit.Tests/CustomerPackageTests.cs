@@ -95,6 +95,45 @@ public class CustomerPackageTests
     }
 
     [Fact]
+    public async Task The_end_date_can_be_typed_when_editing_and_later_pauses_extend_it()
+    {
+        using var test = new TestDatabase();
+        int id, packageId;
+        await using (var db = test.CreateContext())
+        {
+            id = (await test.Commands(db).CreateAsync(test.NewCustomer(frequency: "MONTHLY"))).Id; // Mon 12 Oct – Tue 10 Nov
+            packageId = (await db.CustomerPackages.SingleAsync(p => p.CustomerId == id)).Id;
+        }
+
+        foreach (var (typed, expected) in new[] { (D(11, 15), "Sunday"), (D(10, 10), "before the start date") })
+        {
+            var invalid = await EditRequestAsync(test, packageId, r => r.EndDate = typed);
+            await using var db = test.CreateContext();
+            Assert.Contains(expected, (await Assert.ThrowsAsync<BusinessRuleException>(() => test.Packages(db).UpdateAsync(packageId, invalid))).Message);
+        }
+
+        // Earlier or later than calculated is fine, without the start-date confirmation.
+        var earlier = await EditRequestAsync(test, packageId, r => r.EndDate = D(11, 7));
+        await using (var db = test.CreateContext()) Assert.Equal(D(11, 7), (await test.Packages(db).UpdateAsync(packageId, earlier)).EndDate);
+        var later = await EditRequestAsync(test, packageId, r => r.EndDate = D(11, 14));
+        await using (var db = test.CreateContext()) Assert.Equal(D(11, 14), (await test.Packages(db).UpdateAsync(packageId, later)).EndDate);
+
+        // The same end date as calculated (or none) keeps the stored one.
+        var unchanged = await EditRequestAsync(test, packageId, r => r.EndDate = null);
+        await using (var db = test.CreateContext()) Assert.Equal(D(11, 14), (await test.Packages(db).UpdateAsync(packageId, unchanged)).EndDate);
+
+        await using (var db = test.CreateContext())
+        {
+            var paused = await test.Pauses(db).PauseAsync(id, new PauseCustomerRequest { Dates = [D(10, 14)] });
+            Assert.Equal(D(11, 16), paused.Packages.Single().NewEndDate); // Sat 14 Nov → Mon 16 Nov
+        }
+        await using var check = test.CreateContext();
+        var audit = await check.AuditLogs.Where(a => a.Action == AuditActions.CustomerPackageUpdated).OrderBy(a => a.Id).ToListAsync();
+        Assert.Equal(2, audit.Count);
+        Assert.Equal("2026-11-14", JsonDocument.Parse(audit[1].NewValues!).RootElement.GetProperty("EndDate").GetString());
+    }
+
+    [Fact]
     public async Task A_package_can_be_deleted_only_before_its_first_delivery_day()
     {
         using var test = new TestDatabase();

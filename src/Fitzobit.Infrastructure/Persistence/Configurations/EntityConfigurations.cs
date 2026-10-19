@@ -16,6 +16,7 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         b.Property(c => c.CustomerName).HasMaxLength(200).IsRequired();
         b.Property(c => c.PhoneNumber).HasMaxLength(30).IsRequired();
         b.Property(c => c.NormalizedPhoneNumber).HasMaxLength(20);
+        b.Property(c => c.AlternatePhoneNumber).HasMaxLength(30);
         b.Property(c => c.Address).HasMaxLength(500);
         b.Property(c => c.NormalizedAddress).HasMaxLength(500);
         b.Property(c => c.Pincode).HasMaxLength(10);

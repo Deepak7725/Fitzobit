@@ -1,39 +1,45 @@
 # Fitzobit Delivery Management — Handoff
 
 > **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
-> The app was rebuilt around a **new business model** in four parts (Parts 1–3 on 2026-10-08, Part 4 on 2026-10-16; verified locally, **NOT yet
-> committed/pushed** — see §0). The user sends the next request in chat — continue from there.
+> The app was rebuilt around a **new business model** (Parts 1–3 on 2026-10-08, Part 4 on 2026-10-16, pushed and live on 2026-10-17;
+> Part 5 on 2026-10-19 is **not yet committed** — see §0). The user sends the next request in chat — continue from there.
 > **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
 ---
 
-## 0. Current state (2026-10-17, after Part 4 + follow-ups)
+## 0. Current state (2026-10-19, after Part 5)
 
 | Item | Value |
 |---|---|
 | Project root | `E:\ClaudeWorkspace\Fitzobit` (Windows 11; shells: PowerShell + Git Bash) |
-| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`. Last pushed: `1877b1a` (old model). **Parts 1–4 of the new model are uncommitted in the working tree.** |
-| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Still runs the OLD model until the user pushes. |
+| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`. Parts 1–4, the pincode-lookup fix and the logo/brand colours were pushed by the owner (2026-10-17). **Part 5 (§1) is uncommitted in the working tree.** |
+| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–4 + logo. Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
 | Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
 | Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
-| Migrations | 4: Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4). `has-pending-model-changes` = none. |
+| Migrations | 5: Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **166 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **174 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
-1. **Commit + push Parts 1–4** (Render redeploys from the Dockerfile; Neon migrates on startup). Customers, groups and history are
-   kept, but by the owner's decision the old package data (meal type, frequency, dates, pauses) is **deleted** and every customer
-   shows as *Incomplete* until a package and the delivery time are entered again. Same on the local DB at its next start.
-2. After deploying: **Settings → General → Delivery area → set the service city** (Coimbatore), live and local. Locations are
-   looked up only after this (OpenStreetMap, ~1/second, in the background).
-3. Live: create the admin if not done yet (setup code = Render → Environment → `Auth__SetupCode`); then delete `Auth__SetupCode`.
+1. **Commit + push Part 5.** On deploy Neon gets the new migration (Monthly can pause; Weekly and Trail cannot — the owner can
+   change this per frequency in Settings → Dropdown values → Frequencies → Edit → "Can pause").
+2. (Done 2026-10-17: Parts 1–4 pushed, service city set live, admin created.) Delete `Auth__SetupCode` on Render if still there.
 4. **Reset the Neon password** (it was visible in a screenshot in an earlier chat) and update `Database__ConnectionString` on Render.
 5. Optional: keep-awake pinger (cron-job.org → `/api/health` every 10 min, 07:00–22:00 IST); `Geocoding__Nominatim__ContactEmail` on Render.
 6. After the first deploy, try one **PDF export** on the live site (the Linux/Docker font path could not be run locally — see §5).
 
 ### 0.1b Follow-ups done after Part 4 (2026-10-16/17)
+- **Pincode lookup fix** (pushed): Nominatim was called with `postalcode=` **and** `city=`; with both it returns the city itself,
+  which is rejected as too coarse, so no customer ever got a pincode location. Now only `postalcode` (+ the city viewbox).
+- **Logo and brand colours** (pushed): `public/logo.png` (sign-in card), `logo-mark.png` (white tile in the sidebar),
+  `favicon-32/64.png`, `apple-touch-icon.png` (built from the owner's 2000×2000 PNG; `favicon.svg` removed). Colours: primary
+  green `#6f8a4f` (exact logo green, owner's choice despite 3.9:1 contrast), sidebar/sign-in olive `#313b29` (the `--navy-*`
+  tokens keep their names), avatar orange `#cf4604` (`--accent`). Status colours, info boxes and map group colours unchanged.
+- Thanjavur addresses: OpenStreetMap knows few small nagars; the app uses the **last address part before the city** as the area,
+  so spelling matters (map spellings: "A V P Alagammal Nagar", "Melavastachavady", "Annai Sathya Nagar", "Vilar"). Otherwise the
+  pincode area (approximate) is used.
 - Test data added to the owner's local DB through the app's own API from his signed-in Chrome tab (Claude in Chrome, a new tab,
   `fetch` with header `X-XSRF-TOKEN` from cookie `XSRF-TOKEN`): random packages, delivery times and notes (see Database row).
 - **Dialog fix:** the Change password dialog (opened from the user menu in the top bar) was cut off — the top bar has
@@ -162,6 +168,27 @@ any; Customers table and exports **one row per customer** with a package summary
   pausing Tue 20 Oct paused both (→ 18 Nov / 27 Oct, 1 of 3 each); note add → edit ("edited … by") → delete; package quantity
   edit; delete of a not-yet-started package; edit without delivery time refused; dashboard counts; PDF export with the new
   columns; phone width without horizontal scroll; no console errors.
+
+### Part 5 (done 2026-10-19, not yet committed) — alternative phone, typed end dates, notes column, new pause rules
+Decisions asked from the owner (do not change without asking):
+- **Alternative phone** (optional): same 10-digit rule as the main number, must differ from it, may be shared by other customers;
+  shown in Add/Edit customer, the customer panel, a Customers table column and exports. **Not** searchable.
+- **End date can be typed** in the package Edit dialog: changing start/frequency still recalculates (with confirmation); then the
+  end date may be overridden with any Monday–Saturday date on/after the start (`UpdatePackageRequest.EndDate`; null or equal to the
+  calculated date keeps the calculation). Later pauses extend from the saved end date. New packages: always calculated.
+- **Notes column** on the Customers screen: every note, newest first, with date and writer; also an export column `notes`
+  ("19 Oct 2026, Siva Sankari: text; …").
+- **Pauses**: a per-frequency switch `DictionaryEntry.CanPause` (Settings → Dropdown values → Frequencies; Monthly on, others and new
+  ones off). Only pausable packages are paused; others running that day are still delivered (`PauseResultDto.NotPaused`). Several
+  days per request (`PauseCustomerRequest.Dates`), chosen on a calendar (`components/PauseCalendar.tsx`); `POST
+  /api/customers/{id}/pauses/preview` returns the same result without saving. Per package, **all time**, the first
+  `MaxPauses` = 3 paused days extend the end date; **unlimited** further days are recorded with `NewEndDate = PreviousEndDate`
+  (`PackagePause.ExtendedEndDate`). `PausedCount` (0–3, DB check unchanged) = extending pauses; every paused day is in `Pauses`.
+  A start-date change keeps the pauses; only the first 3 inside the new period extend it. Still: Active customers only, today or later,
+  no Sundays, whole request refused if any day is invalid.
+- Verified in the browser on scratch DB `fitzobit_ui` (dropped): table columns, alt phone validation (same number refused), pausing
+  5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
+  Settings "Can pause" column, no console errors.
 
 ### Verified for real (2026-10-08, scratch DB `fitzobit_e2e`, since dropped)
 First-run setup → dashboard (empty and filled) → service city Coimbatore (found via OpenStreetMap) → Add Customer through the form

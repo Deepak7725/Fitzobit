@@ -182,6 +182,30 @@ public class CustomerExportTests
     }
 
     [Fact]
+    public async Task Alternative_phone_and_notes_are_exported_as_text()
+    {
+        using var test = new TestDatabase();
+        int id;
+        await using (var db = test.CreateContext())
+        {
+            var request = test.NewCustomer(note: "Gate code 1234\nCall before delivery");
+            request.AlternatePhoneNumber = "09876500000";
+            id = (await test.Commands(db).CreateAsync(request)).Id;
+        }
+        test.Clock.UtcNow = test.Clock.UtcNow.AddDays(1);
+        await using (var db = test.CreateContext()) await test.Notes(db).AddAsync(id, new SaveNoteRequest("Less spice"));
+
+        await using var check = test.CreateContext();
+        var file = await Service(test, check).ExportAsync(new CustomerExportRequest { Scope = ExportScope.All, Columns = ["customerId", "alternatePhone", "notes"] });
+
+        using var workbook = new XLWorkbook(new MemoryStream(file.Content));
+        var sheet = workbook.Worksheet("Customers");
+        Assert.Equal(["Customer ID", "Alternative Phone", "Notes"], sheet.Row(1).Cells(1, 3).Select(c => c.GetString()));
+        Assert.Equal("09876500000", sheet.Cell(2, 2).GetString()); // the leading 0 stays: a text cell
+        Assert.Equal("08 Oct 2026, test-user: Less spice; 07 Oct 2026, test-user: Gate code 1234 Call before delivery", sheet.Cell(2, 3).GetString());
+    }
+
+    [Fact]
     public async Task Excel_keeps_ids_phones_and_pincodes_as_text_and_dates_as_dates()
     {
         using var test = new TestDatabase();
@@ -223,9 +247,9 @@ public class CustomerExportTests
     public void Pdf_with_every_column_turns_landscape_and_repeats_over_several_pages()
     {
         var rows = Enumerable.Range(1, 120).Select(i => new CustomerExportRow($"FITZ-{i:000000}", $"Customer with a fairly long name {i}", $"98{i:00000000}",
-            $"{i} Thiruvenkatasamy Road West, R.S. Puram, Coimbatore, Tamil Nadu 641002", "641002", new TimeOnly(7, 30),
+            i % 2 == 0 ? $"97{i:00000000}" : null, $"{i} Thiruvenkatasamy Road West, R.S. Puram, Coimbatore, Tamil Nadu 641002", "641002", new TimeOnly(7, 30),
             "With Egg Meal bowl ×1 · Monthly (12 Oct 2026 – 11 Nov 2026); Veg Oats ×2 · Weekly (13 Oct 2026 – 19 Oct 2026)",
-            new DateOnly(2026, 10, 12), new DateOnly(2026, 11, 11), "Active", i % 3 == 0 ? null : i % 5 + 1, GeocodeStatus.Located,
+            i % 3 == 0 ? "08 Oct 2026, Test Admin: Gate code 1234, call before delivery" : null, new DateOnly(2026, 10, 12), new DateOnly(2026, 11, 11), "Active", i % 3 == 0 ? null : i % 5 + 1, GeocodeStatus.Located,
             GeoMatchLevel.Locality, 11.0123456m, 76.9512345m, new DateTime(2026, 10, 8, 4, 30, 0, DateTimeKind.Utc),
             new DateTime(2026, 10, 8, 5, 30, 0, DateTimeKind.Utc))).ToList();
         var info = new CustomerExportInfo("All customers", [new("Filters", "None (all customers)")], true, "Test Admin",

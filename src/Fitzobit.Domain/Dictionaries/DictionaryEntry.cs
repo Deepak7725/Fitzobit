@@ -24,6 +24,9 @@ public class DictionaryEntry : IUserTracked
     /// <summary>Type-specific number. Frequency: delivery days per package (Monthly 26, Weekly 6).</summary>
     public int? NumericValue { get; set; }
 
+    /// <summary>Frequency only: whether packages of this frequency may pause delivery days (Monthly yes; Weekly, Trail no).</summary>
+    public bool CanPause { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string? CreatedBy { get; set; }

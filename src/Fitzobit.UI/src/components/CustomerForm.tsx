@@ -8,6 +8,8 @@ import { formatDay } from '../format';
 export interface CustomerFormValues {
   customerName: string;
   phoneNumber: string;
+  /** Optional; "" = none. */
+  alternatePhoneNumber: string;
   address: string;
   pincode: string;
   /** "HH:mm" from the time input. */
@@ -36,6 +38,7 @@ export function toCustomerRequest(v: CustomerFormValues): SaveCustomerRequest {
   return {
     customerName: v.customerName,
     phoneNumber: v.phoneNumber,
+    alternatePhoneNumber: v.alternatePhoneNumber.trim() || null,
     address: v.address,
     pincode: v.pincode.trim() || null,
     preferredDeliveryTime: v.deliveryTime ? `${v.deliveryTime.slice(0, 5)}:00` : null,
@@ -65,6 +68,12 @@ export function validate(v: CustomerFormValues, pincodeRequired: boolean): Custo
   const digits = v.phoneNumber.replace(/\D/g, '');
   if (!v.phoneNumber.trim()) errors.phoneNumber = 'Phone number is required.';
   else if (/[^\d\s+\-.()]/.test(v.phoneNumber) || digits.length < 10 || digits.length > 14) errors.phoneNumber = 'Enter a 10-digit mobile number.';
+  const alternate = v.alternatePhoneNumber.trim();
+  const alternateDigits = alternate.replace(/\D/g, '');
+  if (alternate && (/[^\d\s+\-.()]/.test(alternate) || alternateDigits.length < 10 || alternateDigits.length > 14))
+    errors.alternatePhoneNumber = 'Enter a 10-digit mobile number, or leave it empty.';
+  else if (alternate && digits.length >= 10 && alternateDigits.slice(-10) === digits.slice(-10))
+    errors.alternatePhoneNumber = 'Must be different from the phone number.';
   if (!v.address.trim()) errors.address = 'Address is required.';
   if (v.pincode.trim() && !/^[1-9]\d{5}$/.test(v.pincode.trim())) errors.pincode = 'Pincode must be 6 digits.';
   else if (!v.pincode.trim() && pincodeRequired) errors.pincode = 'Pincode is required.';
@@ -205,6 +214,10 @@ export function CustomerFormFields({ values, onChange, errors, dictionaries, cur
             <input id="phoneNumber" className="input" value={values.phoneNumber} inputMode="tel" maxLength={30} autoComplete="off"
               onChange={(e) => set('phoneNumber')(e.target.value)} aria-invalid={!!errors.phoneNumber || undefined} />
           </Field>
+          <Field label="Alternative phone (optional)" error={errors.alternatePhoneNumber} hint="Another number to reach the customer." htmlFor="alternatePhoneNumber">
+            <input id="alternatePhoneNumber" className="input" value={values.alternatePhoneNumber} inputMode="tel" maxLength={30} autoComplete="off"
+              onChange={(e) => set('alternatePhoneNumber')(e.target.value)} aria-invalid={!!errors.alternatePhoneNumber || undefined} />
+          </Field>
           <Field label={<><Clock size={13} /> Preferred delivery time</>} error={errors.deliveryTime}
             hint="One time for all of the customer’s packages." htmlFor="deliveryTime">
             <input id="deliveryTime" type="time" className="input" value={values.deliveryTime} step={300}
@@ -237,11 +250,21 @@ export function CustomerFormFields({ values, onChange, errors, dictionaries, cur
   );
 }
 
+/** An end date the user may type over (package dialog when editing); `calculated` is what the server would use. */
+export interface EditableEndDate {
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  /** True when the value was typed rather than calculated. */
+  typed: boolean;
+  onReset: () => void;
+}
+
 /**
  * The fields of one package with its server-calculated end date. Used for each package on Add Customer and in the package
- * dialog of the customer panel.
+ * dialog of the customer panel (where the end date can also be typed).
  */
-export function PackageFields({ idPrefix, values, onChange, errors, dictionaries, current, preview, endDateLabel, fallbackEndDate, onRemove, title }: {
+export function PackageFields({ idPrefix, values, onChange, errors, dictionaries, current, preview, endDateLabel, fallbackEndDate, editableEndDate, onRemove, title }: {
   idPrefix: string;
   values: PackageFormValues;
   onChange: (values: PackageFormValues) => void;
@@ -251,6 +274,7 @@ export function PackageFields({ idPrefix, values, onChange, errors, dictionaries
   preview: ReturnType<typeof useSchedulePreview>;
   endDateLabel?: string;
   fallbackEndDate?: string | null;
+  editableEndDate?: EditableEndDate;
   onRemove?: () => void;
   title?: ReactNode;
 }) {
@@ -289,7 +313,32 @@ export function PackageFields({ idPrefix, values, onChange, errors, dictionaries
           <input id={id('startDate')} type="date" className="input" value={values.startDate} onChange={(e) => set('startDate')(e.target.value)}
             aria-invalid={!!errors.startDate || undefined} />
         </Field>
-        <EndDateField label={endDateLabel} preview={preview.preview} error={preview.error} loading={preview.loading} fallback={fallbackEndDate} />
+        {editableEndDate ? (
+          <Field
+            label={endDateLabel ?? 'End date'}
+            error={editableEndDate.error ?? preview.error ?? undefined}
+            htmlFor={id('endDate')}
+            hint={
+              editableEndDate.typed ? (
+                <>
+                  Typed by hand.{' '}
+                  <button type="button" className="link-button" onClick={editableEndDate.onReset}>
+                    Use the calculated date
+                  </button>
+                </>
+              ) : preview.preview ? (
+                `Calculated: ${preview.preview.deliveryDays} delivery days (${preview.preview.frequency}), Sundays excluded. You can type another Monday–Saturday date.`
+              ) : (
+                'Last delivery day. You can type another Monday–Saturday date.'
+              )
+            }
+          >
+            <input id={id('endDate')} type="date" className="input" value={editableEndDate.value} min={values.startDate || undefined}
+              onChange={(e) => editableEndDate.onChange(e.target.value)} aria-invalid={!!editableEndDate.error || undefined} />
+          </Field>
+        ) : (
+          <EndDateField label={endDateLabel} preview={preview.preview} error={preview.error} loading={preview.loading} fallback={fallbackEndDate} />
+        )}
       </div>
     </div>
   );

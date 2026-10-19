@@ -24,6 +24,7 @@ public class DictionaryTests
         Assert.Equal(["Regular", "Medium", "Large", "Meal bowl", "Oats"], options.MealType.Select(o => o.DisplayName));
         Assert.Equal(["Monthly", "Weekly"], options.Frequency.Select(o => o.DisplayName));
         Assert.Equal([26, 6], options.Frequency.Select(o => o.NumericValue));
+        Assert.Equal([true, false], options.Frequency.Select(o => o.CanPause)); // only Monthly can pause
         Assert.Equal(["Active", "Inactive", "Paused"], options.CustomerStatus.Select(o => o.DisplayName));
         Assert.Equal(["ACTIVE", "INACTIVE", "PAUSED"], options.CustomerStatus.Select(o => o.Code));
         Assert.All(await db.DictionaryEntries.Where(e => e.DictionaryType == DictionaryType.CustomerStatus).ToListAsync(), e => Assert.True(e.IsSystem));
@@ -56,6 +57,25 @@ public class DictionaryTests
         Assert.False(all.Single(e => e.Id == oats.Id).IsActive);
         Assert.Contains(await db.AuditLogs.Select(a => a.Action).ToListAsync(), a => a == AuditActions.DictionaryEntryUpdated);
         Assert.Contains(await db.AuditLogs.Select(a => a.Action).ToListAsync(), a => a == AuditActions.DictionaryEntryCreated);
+    }
+
+    [Fact]
+    public async Task Can_pause_is_off_for_new_frequencies_and_kept_unless_changed()
+    {
+        using var test = new TestDatabase();
+        await using var db = test.CreateContext();
+        var service = test.Dictionaries(db);
+
+        var trail = await service.CreateAsync(DictionaryType.Frequency, new SaveDictionaryEntryRequest { DisplayName = "Trail", NumericValue = 1 });
+        Assert.False(trail.CanPause);
+        var on = await service.UpdateAsync(trail.Id, new SaveDictionaryEntryRequest { DisplayName = "Trail", NumericValue = 1, CanPause = true });
+        Assert.True(on.CanPause);
+        var renamed = await service.UpdateAsync(trail.Id, new SaveDictionaryEntryRequest { DisplayName = "Trial", NumericValue = 1 }); // no CanPause sent
+        Assert.True(renamed.CanPause);
+
+        // Only frequencies have the switch.
+        var veg = await db.DictionaryEntries.SingleAsync(e => e.DictionaryType == DictionaryType.Preference && e.Code == "VEG");
+        Assert.False((await service.UpdateAsync(veg.Id, new SaveDictionaryEntryRequest { DisplayName = "Veg", CanPause = true })).CanPause);
     }
 
     [Fact]

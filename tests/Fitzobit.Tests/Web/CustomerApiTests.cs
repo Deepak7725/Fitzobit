@@ -26,6 +26,7 @@ public class CustomerApiTests
         Assert.Equal(["Veg", "With Egg", "None"], options.GetProperty("preference").EnumerateArray().Select(o => o.GetProperty("displayName").GetString()));
         Assert.Equal(5, options.GetProperty("mealType").GetArrayLength());
         var weekly = IdOf(options, "frequency", "WEEKLY");
+        var monthly = IdOf(options, "frequency", "MONTHLY");
 
         var nextMonday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(5.5)).AddDays(1);
         while (nextMonday.DayOfWeek != DayOfWeek.Monday) nextMonday = nextMonday.AddDays(1);
@@ -49,6 +50,7 @@ public class CustomerApiTests
         {
             customerName = "Anitha Raman",
             phoneNumber = "98765 43210",
+            alternatePhoneNumber = "9876500000",
             address = "7 Main Road, RS Puram, Coimbatore",
             pincode = "641002",
             preferredDeliveryTime = "07:30:00",
@@ -61,8 +63,9 @@ public class CustomerApiTests
         var id = created.GetProperty("id").GetInt32();
 
         var detail = await JsonAsync(await admin.GetAsync($"/api/customers/{id}"));
-        Assert.Equal(("FITZ-000001", "07:30:00", "Active"), (detail.GetProperty("customerId").GetString(),
-            detail.GetProperty("preferredDeliveryTime").GetString(), detail.GetProperty("status").GetString()));
+        Assert.Equal(("FITZ-000001", "07:30:00", "Active", "9876500000"), (detail.GetProperty("customerId").GetString(),
+            detail.GetProperty("preferredDeliveryTime").GetString(), detail.GetProperty("status").GetString(),
+            detail.GetProperty("alternatePhoneNumber").GetString()));
         var firstPackage = detail.GetProperty("packages")[0];
         Assert.Equal(("Weekly", 0, nextMonday.AddDays(5).ToString("yyyy-MM-dd")), (firstPackage.GetProperty("frequency").GetString(),
             firstPackage.GetProperty("pausedCount").GetInt32(), firstPackage.GetProperty("endDate").GetString()));
@@ -70,15 +73,19 @@ public class CustomerApiTests
         Assert.Equal(("Gate code 1234", true), (note.GetProperty("text").GetString(), note.GetProperty("canEdit").GetBoolean()));
         Assert.Equal(JsonValueKind.Null, detail.GetProperty("latitude").ValueKind);
 
-        // A second package, a pause of both on Saturday, a second note.
+        // A monthly package (ends on the Tuesday 4 weeks later), a pause of Saturday (only the monthly one pauses), a second note.
         var oats = await JsonAsync(await admin.PostAsync($"/api/customers/{id}/packages",
-            new { preferenceId = IdOf(options, "preference", "WITH-EGG"), mealTypeId = IdOf(options, "mealType", "OATS"), quantity = 2, frequencyId = weekly,
+            new { preferenceId = IdOf(options, "preference", "WITH-EGG"), mealTypeId = IdOf(options, "mealType", "OATS"), quantity = 2, frequencyId = monthly,
                 startDate = nextMonday.ToString("yyyy-MM-dd") }));
         var saturday = nextMonday.AddDays(5);
-        var pause = await JsonAsync(await admin.PostAsync($"/api/customers/{id}/pauses", new { date = saturday.ToString("yyyy-MM-dd"), reason = "Out of town" }));
-        Assert.Equal(2, pause.GetProperty("packages").GetArrayLength());
-        Assert.All(pause.GetProperty("packages").EnumerateArray(),
-            p => Assert.Equal(nextMonday.AddDays(7).ToString("yyyy-MM-dd"), p.GetProperty("newEndDate").GetString())); // Saturday → Monday
+        var days = new { dates = new[] { saturday.ToString("yyyy-MM-dd") }, reason = "Out of town" };
+        var pausePreview = await JsonAsync(await admin.PostAsync($"/api/customers/{id}/pauses/preview", days));
+        Assert.Equal(nextMonday.AddDays(30).ToString("yyyy-MM-dd"), pausePreview.GetProperty("packages")[0].GetProperty("newEndDate").GetString());
+        Assert.Equal(0, (await JsonAsync(await admin.GetAsync($"/api/customers/{id}"))).GetProperty("packages")[1].GetProperty("pausedCount").GetInt32());
+        var pause = await JsonAsync(await admin.PostAsync($"/api/customers/{id}/pauses", days));
+        var paused = Assert.Single(pause.GetProperty("packages").EnumerateArray());
+        Assert.Equal(nextMonday.AddDays(30).ToString("yyyy-MM-dd"), paused.GetProperty("newEndDate").GetString()); // Tuesday → Wednesday
+        Assert.Equal(1, pause.GetProperty("notPaused").GetArrayLength()); // the weekly package is still delivered
         HttpAssert.Status(HttpStatusCode.OK, await admin.PostAsync($"/api/customers/{id}/notes", new { text = "Less spice" }));
 
         // The added package starts next Monday, so it can still be deleted.
@@ -97,6 +104,8 @@ public class CustomerApiTests
         var item = list.GetProperty("items")[0];
         Assert.Equal(("Medium", 1), (item.GetProperty("packages")[0].GetProperty("mealType").GetString(), item.GetProperty("packages").GetArrayLength()));
         Assert.Equal(2, (await JsonAsync(await admin.GetAsync($"/api/customers/{id}"))).GetProperty("notes").GetArrayLength());
+        Assert.Equal(["Less spice", "Gate code 1234"], item.GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("text").GetString()));
+        Assert.Equal("9876500000", item.GetProperty("alternatePhoneNumber").GetString());
     }
 
     [Fact]

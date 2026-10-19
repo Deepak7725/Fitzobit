@@ -89,6 +89,7 @@ export default function DictionariesTab() {
                 <th>Name</th>
                 <th>Code</th>
                 {isFrequency && <th className="num">Delivery days</th>}
+                {isFrequency && <th>Can pause</th>}
                 <th className="num" title="Packages using it (customers for a status)">In use</th>
                 <th>Status</th>
                 <th>Updated</th>
@@ -116,6 +117,7 @@ export default function DictionariesTab() {
                     <code className="code">{e.code}</code>
                   </td>
                   {isFrequency && <td className="num">{e.numericValue ?? '—'}</td>}
+                  {isFrequency && <td>{e.canPause ? <Badge tone="success">Yes</Badge> : <span className="muted">No</span>}</td>}
                   <td className="num">{formatNumber(e.customerCount)}</td>
                   <td>
                     {e.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}{' '}
@@ -214,6 +216,7 @@ function EntryDialog({ type, singular, entry, onClose, onSaved }: {
   const [displayName, setDisplayName] = useState(entry?.displayName ?? '');
   const [days, setDays] = useState(entry?.numericValue != null ? String(entry.numericValue) : '');
   const [isActive, setIsActive] = useState(entry?.isActive ?? true);
+  const [canPause, setCanPause] = useState(entry?.canPause ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isFrequency = type === 'Frequency';
@@ -222,7 +225,7 @@ function EntryDialog({ type, singular, entry, onClose, onSaved }: {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const request = { displayName, numericValue: isFrequency && days ? Number(days) : null, isActive };
+    const request = { displayName, numericValue: isFrequency && days ? Number(days) : null, canPause: isFrequency ? canPause : undefined, isActive };
     try {
       if (entry) await api.updateDictionaryEntry(entry.id, request);
       else await api.createDictionaryEntry(type, request);
@@ -264,6 +267,12 @@ function EntryDialog({ type, singular, entry, onClose, onSaved }: {
             <small className="field-hint">
               Monday–Saturday days in one package (Monthly 26, Weekly 6). Changing it affects end dates calculated from now on; existing end dates are kept.
             </small>
+          </label>
+        )}
+        {isFrequency && (
+          <label className="toggle toggle-field">
+            <input type="checkbox" checked={canPause} onChange={(e) => setCanPause(e.target.checked)} />
+            Can pause (packages of this frequency may pause delivery days; the first 3 paused days extend the end date)
           </label>
         )}
         {(!entry || !entry.isSystem) && (

@@ -25,11 +25,14 @@ public sealed record CustomerExportRow(
     string CustomerId,
     string CustomerName,
     string PhoneNumber,
+    string? AlternatePhoneNumber,
     string? Address,
     string? Pincode,
     TimeOnly? PreferredDeliveryTime,
     /// <summary>All packages as text, e.g. "Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026); Veg Oats ×2 · Weekly (…)".</summary>
     string? Packages,
+    /// <summary>All notes, newest first, e.g. "19 Oct 2026, Siva Sankari: Call before delivery; 17 Oct 2026, …".</summary>
+    string? Notes,
     DateOnly? StartDate,
     DateOnly? EndDate,
     string Status,
@@ -158,9 +161,13 @@ public sealed class CustomerExportService(
         }
 
         var found = await sorted.ToListAsync(ct);
-        var packages = await queries.PackageSummariesAsync(found.Select(r => r.Id).ToList(), ct);
-        var data = found.Select(r => new CustomerExportRow(r.CustomerId, r.CustomerName, r.PhoneNumber, r.Address, r.Pincode,
-                r.PreferredDeliveryTime, packages.TryGetValue(r.Id, out var list) ? string.Join("; ", list.Select(p => p.Text)) : null, r.StartDate,
+        var timeZone = ResolveTimeZone();
+        var foundIds = found.Select(r => r.Id).ToList();
+        var packages = await queries.PackageSummariesAsync(foundIds, ct);
+        var notes = columns.Any(c => c.Key == "notes") ? await queries.NoteSummariesAsync(foundIds, ct) : [];
+        var data = found.Select(r => new CustomerExportRow(r.CustomerId, r.CustomerName, r.PhoneNumber, r.AlternatePhoneNumber, r.Address, r.Pincode,
+                r.PreferredDeliveryTime, packages.TryGetValue(r.Id, out var list) ? string.Join("; ", list.Select(p => p.Text)) : null,
+                notes.TryGetValue(r.Id, out var n) ? string.Join("; ", n.Select(x => NoteText(x, timeZone))) : null, r.StartDate,
                 r.EndDate, r.Status, r.GroupNumber, r.GeocodeStatus, r.GeocodeMatchLevel, r.Latitude, r.Longitude, r.CreatedAt, r.UpdatedAt))
             .ToList();
 
@@ -180,7 +187,6 @@ public sealed class CustomerExportService(
         };
 
         var now = clock.UtcNow;
-        var timeZone = ResolveTimeZone();
         var allColumns = columns.Count == CustomerExportColumns.All.Count;
         using var stream = new MemoryStream();
         writer.Write(stream, columns, data, new CustomerExportInfo(scopeLabel, described, allColumns, currentUser.DisplayName, now, timeZone));
@@ -225,6 +231,14 @@ public sealed class CustomerExportService(
         if (geo is not null) list.Add(new("Location", geo));
         if (list.Count == 0) list.Add(new("Filters", "None (all customers)"));
         return list;
+    }
+
+    /// <summary>"19 Oct 2026, Siva Sankari: Call before delivery" (line breaks inside the note become spaces).</summary>
+    private static string NoteText(NoteSummaryDto note, TimeZoneInfo timeZone)
+    {
+        var text = string.Join(' ', note.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
+        var date = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(note.CreatedAt, DateTimeKind.Utc), timeZone);
+        return note.CreatedBy is null ? $"{date:dd MMM yyyy}: {text}" : $"{date:dd MMM yyyy}, {note.CreatedBy}: {text}";
     }
 
     private TimeZoneInfo ResolveTimeZone()

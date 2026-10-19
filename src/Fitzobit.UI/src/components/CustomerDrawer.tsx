@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { History, LocateFixed, MessageSquareText, PauseCircle, Pencil, Plus, RefreshCw, Shuffle, Trash2, X } from 'lucide-react';
-import { api, type AuditEntry, type CustomerDetail, type CustomerNote, type CustomerPackage, type FilterOption, type JsonValue } from '../api';
-import { useApi, useDictionaries } from '../hooks';
+import { api, type AuditEntry, type CustomerDetail, type CustomerNote, type CustomerPackage, type FilterOption, type JsonValue, type PauseResult } from '../api';
+import { useApi, useDebounced, useDictionaries } from '../hooks';
 import { formatDateTime, formatDay, formatTime, todayIso } from '../format';
 import { Badge, ErrorPanel, Loading } from './ui';
 import { ConfirmDialog, Modal, useToast } from './feedback';
 import ChangeGroupDialog from './ChangeGroupDialog';
 import { GroupPill, LocationBadge, formatCoordinate, groupLabel } from './groups';
+import PauseCalendar, { type DayState } from './PauseCalendar';
 import {
   CustomerFormFields,
   EMPTY_PACKAGE,
@@ -83,14 +84,17 @@ export default function CustomerDrawer({ id, groups, onClose, onChanged }: {
   const today = todayIso();
   const isActive = c?.statusCode === 'ACTIVE';
   const hasRunningPackage = !!c?.packages.some((p) => p.endDate >= today);
-  const canPause = isActive && hasRunningPackage;
+  const hasPausablePackage = !!c?.packages.some((p) => p.canPause && p.endDate >= today);
+  const canPause = isActive && hasPausablePackage;
   const pauseHint = !c
     ? undefined
     : !isActive
       ? `${c.status} customers cannot pause a delivery; change the status to Active first`
       : !hasRunningPackage
         ? 'No package delivers from today on'
-        : undefined;
+        : !hasPausablePackage
+          ? 'None of the running packages can pause (only frequencies with “Can pause” in Settings → Dropdown values, e.g. Monthly)'
+          : undefined;
 
   return (
     <>
@@ -260,6 +264,8 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
           {c.phoneNumber}
           {c.normalizedPhoneNumber && c.normalizedPhoneNumber !== c.phoneNumber && <div className="item-sub">Normalized {c.normalizedPhoneNumber}</div>}
         </dd>
+        <dt>Alternative phone</dt>
+        <dd>{c.alternatePhoneNumber ?? <span className="muted">—</span>}</dd>
         <dt>Delivery time</dt>
         <dd>{c.preferredDeliveryTime ? formatTime(c.preferredDeliveryTime) : <Missing />}</dd>
         <dt>Address</dt>
@@ -403,12 +409,19 @@ function PackageCard({ p, onEdit, onDeleted }: { p: CustomerPackage; onEdit: () 
         </dd>
         <dt>Paused</dt>
         <dd>
-          {p.pausedCount} of {p.maxPauses}
+          {p.pauses.length === 0 ? (p.canPause ? 'No paused days' : <span className="muted">{p.frequency} packages cannot pause</span>) : `${p.pauses.length} day(s)`}
+          {p.pauses.length > 0 && (
+            <div className="item-sub">
+              {p.pausedCount} of the first {p.maxPauses} extended the end date
+              {p.pauses.length > p.pausedCount ? '; later days were skipped without changing it' : ''}
+            </div>
+          )}
           {p.pauses.length > 0 && (
             <ul className="plain-list pause-list">
               {p.pauses.map((x) => (
                 <li key={x.pausedDate}>
-                  <strong>{formatDay(x.pausedDate, true)}</strong> · end {formatDay(x.previousEndDate)} → {formatDay(x.newEndDate)}
+                  <strong>{formatDay(x.pausedDate, true)}</strong> ·{' '}
+                  {x.extendedEndDate ? `end ${formatDay(x.previousEndDate)} → ${formatDay(x.newEndDate)}` : 'end date not changed'}
                   {x.reason && <div className="item-sub">“{x.reason}”</div>}
                 </li>
               ))}
@@ -598,6 +611,7 @@ function initialValues(c: CustomerDetail): CustomerFormValues {
   return {
     customerName: c.customerName,
     phoneNumber: c.phoneNumber,
+    alternatePhoneNumber: c.alternatePhoneNumber ?? '',
     address: c.address ?? '',
     pincode: c.pincode ?? '',
     deliveryTime: c.preferredDeliveryTime ? c.preferredDeliveryTime.slice(0, 5) : '',
@@ -702,7 +716,11 @@ function packageValues(p: CustomerPackage): PackageFormValues {
   };
 }
 
-/** Add a package, or edit one (changing its start date or frequency recalculates the end date after a confirmation). */
+/**
+ * Add a package, or edit one. Changing its start date or frequency recalculates the end date after a confirmation; when editing,
+ * the end date can also be typed (a Monday–Saturday date on or after the start). Typing is forgotten when the start date or
+ * frequency changes, so the recalculated date shows again.
+ */
 function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: CustomerDetail; pkg: CustomerPackage | null; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const dictionaries = useDictionaries();
@@ -715,13 +733,26 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
   const scheduleChanged = !pkg || values.startDate !== pkg.startDate || values.frequencyId !== String(pkg.frequencyId);
   const schedule = useSchedulePreview(scheduleChanged ? values.frequencyId : '', scheduleChanged ? values.startDate : '');
   const errors = touched ? validatePackage(values) : {};
+  const [typedEndDate, setTypedEndDate] = useState<string | null>(null);
+  const calculatedEndDate = pkg ? (scheduleChanged ? (schedule.preview?.endDate ?? '') : pkg.endDate) : '';
+  const endDate = typedEndDate ?? calculatedEndDate;
+  const endDateError = !pkg || typedEndDate == null ? undefined : endDateProblem(typedEndDate, values.startDate);
+  const changeValues = (next: PackageFormValues) => {
+    if (next.startDate !== values.startDate || next.frequencyId !== values.frequencyId) setTypedEndDate(null);
+    setValues(next);
+  };
 
   const save = async (confirmScheduleChange: boolean) => {
     setBusy(true);
     setError(null);
     try {
       if (pkg) {
-        const saved = await api.updatePackage(pkg.id, { ...toPackageRequest(values), expectedUpdatedAt: pkg.updatedAt, confirmScheduleChange });
+        const saved = await api.updatePackage(pkg.id, {
+          ...toPackageRequest(values),
+          expectedUpdatedAt: pkg.updatedAt,
+          confirmScheduleChange,
+          endDate: typedEndDate,
+        });
         toast(`Package saved. It ends ${formatDay(saved.endDate, true)}.`);
       } else {
         const saved = await api.addPackage(customer.id, toPackageRequest(values));
@@ -738,7 +769,7 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    if (Object.keys(validatePackage(values)).length > 0 || schedule.error || (scheduleChanged && schedule.loading)) return;
+    if (Object.keys(validatePackage(values)).length > 0 || endDateError || schedule.error || (scheduleChanged && schedule.loading)) return;
     if (pkg && scheduleChanged) setConfirming(true);
     else void save(false);
   };
@@ -748,9 +779,11 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
     ? [
         values.startDate !== pkg.startDate ? `Start date: ${formatDay(pkg.startDate)} → ${formatDay(values.startDate)}` : null,
         values.frequencyId !== String(pkg.frequencyId) ? `Frequency: ${pkg.frequency} → ${name(dictionaries.data?.frequency, values.frequencyId) ?? '—'}` : null,
-        `End date: ${formatDay(pkg.endDate)} → ${schedule.preview ? formatDay(schedule.preview.endDate) : 'recalculated'}${pkg.pauses.length > 0 ? ' plus paused days inside the new period' : ''}`,
+        typedEndDate != null
+          ? `End date: ${formatDay(pkg.endDate)} → ${formatDay(typedEndDate)} (typed)`
+          : `End date: ${formatDay(pkg.endDate)} → ${schedule.preview ? formatDay(schedule.preview.endDate) : 'recalculated'}${pkg.pauses.length > 0 ? ` plus up to ${pkg.maxPauses} paused days inside the new period` : ''}`,
         pkg.pauses.length > 0
-          ? `${pkg.pauses.length} paused day(s) are kept; only those inside the new period count towards its ${pkg.maxPauses} pauses.`
+          ? `${pkg.pauses.length} paused day(s) are kept; the first ${pkg.maxPauses} inside the new period extend it.`
           : null,
         'The previous dates stay in the audit history.',
       ].filter((m): m is string => !!m)
@@ -779,7 +812,7 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
           <PackageFields
             idPrefix="package-dialog"
             values={values}
-            onChange={setValues}
+            onChange={changeValues}
             errors={errors}
             dictionaries={dictionaries.data}
             current={
@@ -794,10 +827,24 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
             preview={schedule}
             endDateLabel={pkg && scheduleChanged ? 'New end date' : 'End date'}
             fallbackEndDate={pkg && !scheduleChanged ? pkg.endDate : null}
+            editableEndDate={
+              pkg
+                ? {
+                    value: endDate,
+                    onChange: (value) => setTypedEndDate(value === calculatedEndDate ? null : value),
+                    error: touched ? endDateError : undefined,
+                    typed: typedEndDate != null,
+                    onReset: () => setTypedEndDate(null),
+                  }
+                : undefined
+            }
           />
           {pkg && (
             <p className="field-hint">
-              Paused {pkg.pausedCount} of {pkg.maxPauses}. Pauses are added with “Pause a delivery”.
+              {pkg.pauses.length > 0
+                ? `${pkg.pauses.length} paused day(s); ${pkg.pausedCount} of the first ${pkg.maxPauses} extended the end date. `
+                : ''}
+              Pauses are added with “Pause a delivery”{pkg.canPause ? '' : ` (${pkg.frequency} packages cannot pause)`}.
             </p>
           )}
           {error && (
@@ -821,32 +868,68 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
   );
 }
 
-/** Pauses one day for every package running that day (the server decides; this only shows what will happen). */
+/** Why a typed end date is not allowed, or undefined when it is fine (the server checks again). */
+function endDateProblem(endDate: string, startDate: string): string | undefined {
+  if (!endDate) return 'Choose the last delivery day.';
+  if (startDate && endDate < startDate) return 'The end date cannot be before the start date.';
+  if (new Date(`${endDate}T00:00:00Z`).getUTCDay() === 0) return 'Sunday is not a delivery day; choose Monday–Saturday.';
+  return undefined;
+}
+
+/**
+ * Pauses several delivery days at once, chosen on a calendar. Only packages whose frequency can pause (e.g. Monthly) are paused;
+ * the first 3 paused days of a package move its end date, later ones do not. The server decides; the preview below the calendar
+ * is the server's own answer for the chosen days.
+ */
 function PauseDialog({ customer, onClose, onDone }: { customer: CustomerDetail; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const today = todayIso();
-  const lastEnd = customer.packages.reduce((max, p) => (p.endDate > max ? p.endDate : max), today);
-  const [date, setDate] = useState('');
+  const pausable = customer.packages.filter((p) => p.canPause && p.endDate >= today);
+  const lastEnd = pausable.reduce((max, p) => (p.endDate > max ? p.endDate : max), today);
+  const [selected, setSelected] = useState<string[]>([]);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ key: string; result: PauseResult | null; error: string | null }>({ key: '', result: null, error: null });
 
-  const running = date ? customer.packages.filter((p) => p.startDate <= date && p.endDate >= date) : [];
-  const full = running.filter((p) => p.pausedCount >= p.maxPauses && !p.pauses.some((x) => x.pausedDate === date));
+  const key = useDebounced(selected.join(','), 300);
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    api
+      .previewPause(customer.id, key.split(','))
+      .then((result) => !cancelled && setPreview({ key, result, error: null }))
+      .catch((e: unknown) => !cancelled && setPreview({ key, result: null, error: e instanceof Error ? e.message : 'Could not check these days.' }));
+    return () => {
+      cancelled = true;
+    };
+  }, [key, customer.id]);
+  const current = selected.length > 0 && preview.key === selected.join(',');
+  const checking = selected.length > 0 && !current;
+
+  const dayState = (day: string): DayState => {
+    if (new Date(`${day}T00:00:00Z`).getUTCDay() === 0) return { selectable: false, note: 'Sunday: no delivery' };
+    if (day < today) return { selectable: false, note: 'Past day' };
+    const running = pausable.filter((p) => p.startDate <= day && p.endDate >= day);
+    if (running.length === 0) return { selectable: false, note: 'No package that can pause delivers on this day' };
+    if (running.every((p) => p.pauses.some((x) => x.pausedDate === day))) return { selectable: false, note: 'Already paused', paused: true };
+    return { selectable: true };
+  };
+  const toggle = (day: string) => setSelected((list) => (list.includes(day) ? list.filter((d) => d !== day) : [...list, day].sort()));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!date) {
-      setError('Choose the delivery day to pause.');
+    if (selected.length === 0) {
+      setError('Choose at least one day on the calendar.');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const result = await api.pauseCustomer(customer.id, date, reason.trim() || null);
+      const result = await api.pauseCustomer(customer.id, selected, reason.trim() || null);
       toast(
-        `${formatDay(result.pausedDate, true)} paused for ${result.packages.length} package(s): ` +
-          result.packages.map((p) => `ends ${formatDay(p.newEndDate)} (${p.pausesLeft} pause(s) left)`).join('; ') + '.',
+        `${result.dates.length} day(s) paused. ` +
+          result.packages.map((p) => `${p.package.replace(/ \(.*\)$/, '')}: ends ${formatDay(p.newEndDate, true)}`).join('; ') + '.',
       );
       onDone();
     } catch (err) {
@@ -857,47 +940,63 @@ function PauseDialog({ customer, onClose, onDone }: { customer: CustomerDetail; 
 
   return (
     <Modal
-      title={`Pause a delivery for ${customer.customerName}`}
+      title={`Pause deliveries for ${customer.customerName}`}
       onClose={onClose}
+      wide
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="btn btn-primary" type="submit" form="pause-form" disabled={busy || full.length > 0}>
-            {busy ? 'Pausing…' : 'Pause this day'}
+          <button className="btn btn-primary" type="submit" form="pause-form" disabled={busy || selected.length === 0 || checking || !!(current && preview.error)}>
+            {busy ? 'Pausing…' : selected.length <= 1 ? 'Pause this day' : `Pause ${selected.length} days`}
           </button>
         </>
       }
     >
       <form id="pause-form" onSubmit={submit}>
         <ul className="confirm-list">
-          <li>Every package running on that day is paused. No meal is lost: each package’s end date moves to the next delivery day.</li>
-          <li>Sundays are never delivery days. At most 3 pauses per package. A pause cannot be undone.</li>
+          <li>Click the days to pause (click again to clear). Only packages whose frequency can pause are paused; others are still delivered.</li>
+          <li>The first {customer.packages[0]?.maxPauses ?? 3} paused days of a package move its end date to the next delivery day. Later paused days are skipped and the end date stays.</li>
+          <li>Sundays are never delivery days. A pause cannot be undone.</li>
         </ul>
-        <label className="field">
-          Delivery day to pause
-          <input className="input" type="date" value={date} min={today} max={lastEnd} onChange={(e) => setDate(e.target.value)} autoFocus />
-        </label>
-        {date && (
+        <div className="pause-layout">
+          <PauseCalendar from={today} to={lastEnd} selected={selected} dayState={dayState} onToggle={toggle} />
           <div className="pause-preview">
-            {running.length === 0 ? (
-              <p className="text-warning">No package delivers on {formatDay(date, true)}.</p>
+            {selected.length === 0 ? (
+              <p className="muted small">No days chosen yet.</p>
+            ) : checking ? (
+              <p className="muted small">Checking {selected.length} day(s)…</p>
+            ) : preview.error ? (
+              <p className="text-warning small">{preview.error}</p>
             ) : (
-              <>
-                <p className="small strong">Packages paused on {formatDay(date, true)}:</p>
-                <ul className="plain-list">
-                  {running.map((p) => (
-                    <li key={p.id} className={full.includes(p) ? 'text-warning' : ''}>
-                      {packageName(p)} · ends {formatDay(p.endDate)} · {p.pausedCount} of {p.maxPauses} pauses used
-                      {full.includes(p) && ' — no pauses left, so this day cannot be paused'}
-                    </li>
+              preview.result && (
+                <>
+                  {preview.result.packages.map((p) => (
+                    <div key={p.packageId} className="pause-preview-package">
+                      <p className="small strong">{p.package.replace(/ \(.*\)$/, '')}</p>
+                      <ul className="plain-list small">
+                        {p.days.map((d) => (
+                          <li key={d.date}>
+                            {formatDay(d.date, true)} · {d.extendedEndDate ? 'end date moves 1 delivery day' : 'end date stays'}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="item-sub">
+                        Ends {formatDay(p.previousEndDate, true)}
+                        {p.newEndDate !== p.previousEndDate ? ` → ${formatDay(p.newEndDate, true)}` : ' (unchanged)'} · {p.extendingPausesLeft} extending
+                        pause(s) left
+                      </p>
+                    </div>
                   ))}
-                </ul>
-              </>
+                  {preview.result.notPaused.length > 0 && (
+                    <p className="item-sub">Still delivered (cannot pause): {preview.result.notPaused.map((n) => n.replace(/ \(.*\)$/, '')).join('; ')}</p>
+                  )}
+                </>
+              )
             )}
           </div>
-        )}
+        </div>
         <label className="field">
           Reason (optional)
           <input className="input" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of town" />

@@ -56,6 +56,41 @@ public class CustomerTests
     }
 
     [Fact]
+    public async Task The_alternative_phone_is_optional_validated_and_may_be_shared()
+    {
+        using var test = new TestDatabase();
+        var request = test.NewCustomer();
+        request.AlternatePhoneNumber = " +91 98765 00000 ";
+        var first = await CreateAsync(test, request);
+
+        foreach (var (alternate, expected) in new[] { ("09876543210", "must be different"), ("12345", "Invalid alternative phone number") })
+        {
+            var invalid = test.NewCustomer("Karthik N", "9876543210");
+            invalid.AlternatePhoneNumber = alternate;
+            await using var db = test.CreateContext();
+            Assert.Contains(expected, (await Assert.ThrowsAsync<BusinessRuleException>(() => test.Commands(db).CreateAsync(invalid))).Message);
+        }
+
+        // Another customer may use the same number (e.g. family members), as main or alternative number.
+        var family = test.NewCustomer("Karthik N", "9123456780");
+        family.AlternatePhoneNumber = "9876500000";
+        await using (var db = test.CreateContext()) Assert.Empty((await test.Commands(db).CreateAsync(family)).Warnings);
+
+        await using (var db = test.CreateContext())
+        {
+            var detail = await test.Queries(db).GetDetailAsync(first.Id);
+            Assert.Equal("+91 98765 00000", detail.AlternatePhoneNumber);
+            var list = await test.Queries(db).ListAsync(new CustomerFilter { Sort = "customerId" }, 1, 25);
+            Assert.Equal(["+91 98765 00000", "9876500000"], list.Items.Select(i => i.AlternatePhoneNumber));
+
+            var result = await test.Commands(db).UpdateAsync(first.Id, Update(detail, r => r.AlternatePhoneNumber = "  "));
+            Assert.Equal(["AlternatePhoneNumber"], result.ChangedFields);
+        }
+        await using var check = test.CreateContext();
+        Assert.Null((await check.Customers.SingleAsync(c => c.Id == first.Id)).AlternatePhoneNumber);
+    }
+
+    [Fact]
     public async Task Concurrent_creates_never_share_an_id()
     {
         using var test = new TestDatabase();

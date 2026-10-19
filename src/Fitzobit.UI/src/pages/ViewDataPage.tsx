@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Columns3, Download, Eye, FileSpreadsheet, FileText, FilterX, LocateFixed, Map as MapIcon, Search, Shuffle, Table2, UserPlus, X } from 'lucide-react';
-import { api, type CustomerFilter, type CustomerListItem, type ExportFormat, type ExportScope, type PackageSummary } from '../api';
+import { api, type CustomerFilter, type CustomerListItem, type ExportFormat, type ExportScope, type NoteSummary, type PackageSummary } from '../api';
 import { useApi, useDebounced } from '../hooks';
 import { formatDate, formatDateTime, formatDay, formatTime } from '../format';
 import { Badge, Card, EmptyState, ErrorPanel, Loading, PageHeader } from '../components/ui';
@@ -32,7 +32,25 @@ function PackagesCell({ packages }: { packages: PackageSummary[] }) {
           </span>
           <span className="item-sub nowrap">
             {formatDay(p.startDate)} – {formatDay(p.endDate)}
-            {p.pausedCount > 0 ? ` · ${p.pausedCount} paused` : ''}
+            {p.pausedDays > 0 ? ` · ${p.pausedDays} paused` : ''}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Every note, newest first, each with its date and writer. */
+function NotesCell({ notes }: { notes: NoteSummary[] }) {
+  if (notes.length === 0) return <span className="muted">—</span>;
+  return (
+    <ul className="notes-cell">
+      {notes.map((n) => (
+        <li key={n.id}>
+          <span className="notes-cell-text">{n.text}</span>
+          <span className="item-sub nowrap">
+            {formatDate(n.createdAt)}
+            {n.createdBy ? ` · ${n.createdBy}` : ''}
           </span>
         </li>
       ))}
@@ -46,6 +64,7 @@ const COLUMNS: Column[] = [
   { key: 'customerId', label: 'Customer ID', sort: 'customerId', render: (c) => <span className="strong">{c.customerId}</span> },
   { key: 'customerName', label: 'Customer Name', sort: 'customerName', render: (c) => c.customerName },
   { key: 'phone', label: 'Phone Number', className: 'nowrap', render: (c) => c.phoneNumber },
+  { key: 'alternatePhone', label: 'Alternative Phone', className: 'nowrap', render: (c) => c.alternatePhoneNumber ?? <span className="muted">—</span> },
   { key: 'address', label: 'Address', sort: 'address', className: 'cell-wide', render: (c) => c.address ?? '—' },
   { key: 'pincode', label: 'Pincode', sort: 'pincode', render: (c) => c.pincode ?? notSet },
   {
@@ -56,6 +75,7 @@ const COLUMNS: Column[] = [
     render: (c) => (c.preferredDeliveryTime ? formatTime(c.preferredDeliveryTime) : notSet),
   },
   { key: 'packages', label: 'Packages', className: 'cell-packages', render: (c) => <PackagesCell packages={c.packages} /> },
+  { key: 'notes', label: 'Notes', className: 'cell-notes', render: (c) => <NotesCell notes={c.notes} /> },
   { key: 'startDate', label: 'Start Date', sort: 'startDate', className: 'nowrap', render: (c) => (c.startDate ? formatDay(c.startDate) : notSet) },
   { key: 'endDate', label: 'End Date', sort: 'endDate', className: 'nowrap', render: (c) => (c.endDate ? formatDay(c.endDate) : '—') },
   { key: 'group', label: 'Group Number', sort: 'group', className: 'nowrap', render: (c) => <GroupPill groupNumber={c.groupNumber} /> },
