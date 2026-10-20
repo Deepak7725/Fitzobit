@@ -364,6 +364,8 @@ export interface CustomerDetail {
   /** "HH:mm:ss" */
   preferredDeliveryTime: string | null;
   packages: CustomerPackage[];
+  /** Finished packages moved aside by the daily 12 pm run (newest first); read-only. */
+  pastPackages: CustomerPackage[];
   notes: CustomerNote[];
   statusId: number;
   status: string;

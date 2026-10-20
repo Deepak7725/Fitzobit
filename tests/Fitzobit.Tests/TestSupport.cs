@@ -72,11 +72,13 @@ public sealed class TestDatabase : IDisposable
     public CustomerCommandService Commands(FitzobitDbContext db) =>
         new(db, new LocationClassificationService(LocationOptions), Dictionaries(db), Packages(db), new SequenceCustomerIdGenerator(db), Queue, AuditFor(db));
 
-    public CustomerPackageService Packages(FitzobitDbContext db) => new(db, Dictionaries(db), Schedule(db), AuditFor(db), Clock);
+    public CustomerPackageService Packages(FitzobitDbContext db) => new(db, Dictionaries(db), Schedule(db), AuditFor(db), Clock, Automation(db));
+
+    public CustomerAutomationService Automation(FitzobitDbContext db) => new(db, new DeliveryCalendarService(), AuditFor(db), Clock);
 
     public CustomerNoteService Notes(FitzobitDbContext db) => new(db, AuditFor(db), User);
 
-    public CustomerPauseService Pauses(FitzobitDbContext db) => new(db, Schedule(db), AuditFor(db), User, Clock);
+    public CustomerPauseService Pauses(FitzobitDbContext db) => new(db, Schedule(db), AuditFor(db), User, Clock, Automation(db));
 
     public CustomerQueryService Queries(FitzobitDbContext db) => new(db, new DeliveryCalendarService(), Clock, User);
 

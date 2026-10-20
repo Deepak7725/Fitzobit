@@ -44,8 +44,8 @@ public sealed class DeliveryGroupQueryService(IFitzobitDbContext db)
                 a.Customer!.NormalizedAddress,
                 a.Customer.Pincode,
                 a.Customer.Locality,
-                MealTypes = a.Customer.Packages.Select(p => p.MealType!.DisplayName).ToList(),
-                Frequencies = a.Customer.Packages.Select(p => p.Frequency!.DisplayName).ToList(),
+                MealTypes = a.Customer.Packages.Where(p => p.ArchivedAt == null).Select(p => p.MealType!.DisplayName).ToList(),
+                Frequencies = a.Customer.Packages.Where(p => p.ArchivedAt == null).Select(p => p.Frequency!.DisplayName).ToList(),
                 Status = a.Customer.Status!.DisplayName,
                 StatusOrder = a.Customer.Status.SortOrder,
                 Located = a.Customer.Latitude != null

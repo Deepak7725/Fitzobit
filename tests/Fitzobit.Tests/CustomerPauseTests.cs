@@ -187,9 +187,9 @@ public class CustomerPauseTests
     }
 
     [Theory]
-    [InlineData("INACTIVE")]
-    [InlineData("PAUSED")]
-    public async Task Only_active_customers_can_pause(string statusCode)
+    [InlineData("INACTIVE", false)]
+    [InlineData("PAUSED", true)]
+    public async Task Active_and_paused_customers_can_pause_but_inactive_ones_cannot(string statusCode, bool allowed)
     {
         using var test = new TestDatabase();
         var id = await MonthlyCustomerAsync(test);
@@ -199,9 +199,9 @@ public class CustomerPauseTests
             await test.Commands(db).UpdateAsync(id, CustomerTests.Update(detail, r => r.StatusId = test.Entry(DictionaryType.CustomerStatus, statusCode)));
         }
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => PauseAsync(test, id, D(10, 14)));
-        Assert.Contains("Only active customers", error.Message);
-        Assert.Equal(0, (await PackagesAsync(test, id)).Single().PausedCount);
+        if (allowed) await PauseAsync(test, id, D(10, 14));
+        else Assert.Contains("Only active or paused customers", (await Assert.ThrowsAsync<BusinessRuleException>(() => PauseAsync(test, id, D(10, 14)))).Message);
+        Assert.Equal(allowed ? 1 : 0, (await PackagesAsync(test, id)).Single().PausedCount);
     }
 
     [Fact]

@@ -135,7 +135,7 @@ public sealed class DeliveryGroupService(IFitzobitDbContext db, IAuditLogger aud
             .Select(c => new
             {
                 c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.Address, c.Pincode, c.Locality, c.City,
-                MealTypes = c.Packages.OrderBy(p => p.StartDate).Select(p => p.MealType!.DisplayName).ToList(),
+                MealTypes = c.Packages.Where(p => p.ArchivedAt == null).OrderBy(p => p.StartDate).Select(p => p.MealType!.DisplayName).ToList(),
                 Status = c.Status!.DisplayName, Located = c.Latitude != null,
                 AssignedAt = c.GroupAssignments.Where(a => a.IsActive).Select(a => (DateTime?)a.AssignedAt).FirstOrDefault()
             })

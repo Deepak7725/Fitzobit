@@ -34,7 +34,7 @@ public sealed class CustomerFilter
     /// <summary>Text contained in the address.</summary>
     public string? Address { get; set; }
 
-    /// <summary>Only customers still missing a package, a preferred delivery time or a pincode.</summary>
+    /// <summary>Only customers that never had a package, or still miss a preferred delivery time or a pincode.</summary>
     public bool Incomplete { get; set; }
 
     /// <summary>located (any coordinates) | approximate (pincode area only) | missing (location unavailable)</summary>
@@ -142,6 +142,8 @@ public sealed record CustomerDetailDto(
     string? City,
     TimeOnly? PreferredDeliveryTime,
     IReadOnlyList<CustomerPackageDto> Packages,
+    /// <summary>Finished packages moved aside by the daily 12 pm run, newest first; read-only.</summary>
+    IReadOnlyList<CustomerPackageDto> PastPackages,
     IReadOnlyList<CustomerNoteDto> Notes,
     int StatusId,
     string Status,
@@ -178,7 +180,10 @@ public sealed class CustomerRow
     public string? Address { get; init; }
     public string? Pincode { get; init; }
     public TimeOnly? PreferredDeliveryTime { get; init; }
+    /// <summary>Current packages (past packages are not counted).</summary>
     public int PackageCount { get; init; }
+    /// <summary>The customer has (or had) at least one package, current or past.</summary>
+    public bool HasAnyPackage { get; init; }
     public DateOnly? StartDate { get; init; }
     public DateOnly? EndDate { get; init; }
     public int StatusId { get; init; }
@@ -211,9 +216,10 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             Address = c.Address,
             Pincode = c.Pincode,
             PreferredDeliveryTime = c.PreferredDeliveryTime,
-            PackageCount = c.Packages.Count(),
-            StartDate = c.Packages.Min(p => (DateOnly?)p.StartDate),
-            EndDate = c.Packages.Max(p => (DateOnly?)p.EndDate),
+            PackageCount = c.Packages.Count(p => p.ArchivedAt == null),
+            HasAnyPackage = c.Packages.Any(),
+            StartDate = c.Packages.Where(p => p.ArchivedAt == null).Min(p => (DateOnly?)p.StartDate),
+            EndDate = c.Packages.Where(p => p.ArchivedAt == null).Max(p => (DateOnly?)p.EndDate),
             StatusId = c.StatusId,
             Status = c.Status!.DisplayName,
             StatusCode = c.Status.Code,
@@ -230,7 +236,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
     /// <summary>The customers list filters, applied in SQL. Package filters match customers having any package with that value.</summary>
     public IQueryable<CustomerRow> ApplyFilter(IQueryable<CustomerRow> rows, CustomerFilter f)
     {
-        var packages = db.CustomerPackages.AsNoTracking();
+        var packages = db.CustomerPackages.AsNoTracking().Where(p => p.ArchivedAt == null);
         if (!string.IsNullOrWhiteSpace(f.Search))
         {
             var s = f.Search.Trim().ToLower();
@@ -269,7 +275,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             _ => rows
         };
         if (f.Incomplete)
-            rows = rows.Where(r => r.PackageCount == 0 || r.PreferredDeliveryTime == null || r.Pincode == null);
+            rows = rows.Where(r => !r.HasAnyPackage || r.PreferredDeliveryTime == null || r.Pincode == null);
         return rows;
     }
 
@@ -321,7 +327,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         return new PagedResult<CustomerListItemDto>(items, total, page, pageSize);
     }
 
-    /// <summary>The packages of the given customers (by customer id), oldest start first. Loaded in batches to keep queries small.</summary>
+    /// <summary>The current packages of the given customers (by customer id), oldest start first. Loaded in batches to keep queries small.</summary>
     public async Task<Dictionary<int, List<PackageSummaryDto>>> PackageSummariesAsync(IReadOnlyList<int> customerIds, CancellationToken ct = default)
     {
         var result = new Dictionary<int, List<PackageSummaryDto>>();
@@ -329,7 +335,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         {
             var ids = batch.ToList();
             var packages = await db.CustomerPackages.AsNoTracking()
-                .Where(p => ids.Contains(p.CustomerId))
+                .Where(p => ids.Contains(p.CustomerId) && p.ArchivedAt == null)
                 .OrderBy(p => p.StartDate).ThenBy(p => p.Id)
                 .Select(p => new
                 {
@@ -404,7 +410,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             .Include(p => p.Preference).Include(p => p.MealType).Include(p => p.Frequency).Include(p => p.Pauses)
             .OrderBy(p => p.StartDate).ThenBy(p => p.Id)
             .ToListAsync(ct);
-        var packageDtos = packages.Select(p =>
+        CustomerPackageDto ToPackageDto(CustomerPackage p)
         {
             var pauses = p.Pauses.OrderBy(x => x.PausedDate)
                 .Select(x => new PackagePauseDto(x.PausedDate, x.PreviousEndDate, x.NewEndDate, x.ExtendedEndDate, x.Reason, x.CreatedAt,
@@ -416,7 +422,9 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             return new CustomerPackageDto(p.Id, p.PreferenceId, p.Preference!.DisplayName, p.MealTypeId, p.MealType!.DisplayName, p.Quantity,
                 p.FrequencyId, p.Frequency!.DisplayName, p.Frequency.NumericValue, p.Frequency.CanPause, p.StartDate, p.EndDate, daysLeft, p.PausedCount,
                 CustomerPackage.MaxPauses, pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy);
-        }).ToList();
+        }
+        var packageDtos = packages.Where(p => !p.IsPast).Select(ToPackageDto).ToList();
+        var pastDtos = packages.Where(p => p.IsPast).OrderByDescending(p => p.EndDate).ThenByDescending(p => p.Id).Select(ToPackageDto).ToList();
 
         var notes = await db.CustomerNotes.AsNoTracking().Where(n => n.CustomerId == id)
             .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id).ToListAsync(ct);
@@ -433,7 +441,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             .ToListAsync(ct);
 
         return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.AlternatePhoneNumber, c.Address, c.Pincode, c.Locality,
-            c.City, c.PreferredDeliveryTime, packageDtos, noteDtos, c.StatusId, c.Status!.DisplayName, c.Status.Code, c.Latitude, c.Longitude,
+            c.City, c.PreferredDeliveryTime, packageDtos, pastDtos, noteDtos, c.StatusId, c.Status!.DisplayName, c.Status.Code, c.Latitude, c.Longitude,
             c.GeocodeStatus.ToString(), c.GeocodeMatchLevel?.ToString(), c.GeocodeMessage, c.GeocodeSource, c.GeocodedAt, c.GeocodeNextAttemptAt,
             c.LegacyPlan, current?.DeliveryGroupId, current?.GroupNumber, current?.AssignedAt, current?.AssignedBy, history,
             audit.Select(ToDto).ToList(), c.CreatedAt, c.CreatedBy, c.UpdatedAt, c.UpdatedBy);

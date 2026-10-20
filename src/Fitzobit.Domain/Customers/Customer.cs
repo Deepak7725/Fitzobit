@@ -163,6 +163,14 @@ public class CustomerPackage : IUserTracked
     /// <summary>Paused days that extended the end date (0–<see cref="MaxPauses"/>); <see cref="Pauses"/> holds every paused day.</summary>
     public int PausedCount { get; set; }
 
+    /// <summary>
+    /// When the package moved to the customer's past packages (by the daily 12 pm run on its last day). Past packages are read-only and
+    /// left out of the Customers list, filters, exports, counts and pauses; null = a current package.
+    /// </summary>
+    public DateTime? ArchivedAt { get; set; }
+
+    public bool IsPast => ArchivedAt != null;
+
     /// <summary>PostgreSQL row version (xmin): concurrent changes of the same package fail instead of overwriting each other.</summary>
     public uint Version { get; set; }
 

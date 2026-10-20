@@ -51,7 +51,8 @@ public sealed class DashboardService(IFitzobitDbContext db, IClock clock)
     [
         AuditActions.CustomerCreated, AuditActions.CustomerUpdated, AuditActions.CustomerPaused, AuditActions.CustomerAssigned,
         AuditActions.CustomerReassigned, AuditActions.CustomerUnassigned, AuditActions.CustomerPackageAdded, AuditActions.CustomerPackageUpdated,
-        AuditActions.CustomerPackageDeleted, AuditActions.CustomerNoteAdded, AuditActions.CustomerNoteUpdated, AuditActions.CustomerNoteDeleted
+        AuditActions.CustomerPackageDeleted, AuditActions.CustomerNoteAdded, AuditActions.CustomerNoteUpdated, AuditActions.CustomerNoteDeleted,
+        AuditActions.CustomerPackageEnded, AuditActions.CustomerStatusChangedAutomatically
     ];
 
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)
@@ -78,8 +79,8 @@ public sealed class DashboardService(IFitzobitDbContext db, IClock clock)
             .Select(g => new ChartItemDto(g.DeliveryGroupId.ToString(), Domain.DeliveryGroups.DeliveryGroup.Label(g.GroupNumber), g.Count)).ToList();
         if (unassignedCount > 0) groupChart.Add(new ChartItemDto("none", "No group", unassignedCount));
 
-        // Meal types and frequencies count packages (a customer with two weekly packages counts twice).
-        var packages = db.CustomerPackages.AsNoTracking();
+        // Meal types and frequencies count current packages (a customer with two weekly packages counts twice; past packages not at all).
+        var packages = db.CustomerPackages.AsNoTracking().Where(p => p.ArchivedAt == null);
         var byMealType = await packages.GroupBy(p => new { p.MealTypeId, p.MealType!.DisplayName })
             .Select(g => new { g.Key.MealTypeId, g.Key.DisplayName, Count = g.Count() }).ToListAsync(ct);
         var byFrequency = await packages.GroupBy(p => new { p.FrequencyId, p.Frequency!.DisplayName })

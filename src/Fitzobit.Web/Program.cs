@@ -49,6 +49,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 builder.Services.AddHostedService<GeocodingWorker>();
+builder.Services.AddHostedService<CustomerAutomationWorker>();
 
 // ---------- Authentication: HttpOnly, SameSite=Strict cookie; sessions re-validated against the user's security stamp ----------
 var requireHttpsCookies = builder.Configuration.GetValue("Auth:RequireHttpsCookies", !builder.Environment.IsDevelopment());

@@ -82,7 +82,7 @@ export default function CustomerDrawer({ id, groups, onClose, onChanged }: {
     onChanged();
   };
   const today = todayIso();
-  const isActive = c?.statusCode === 'ACTIVE';
+  const isActive = c?.statusCode === 'ACTIVE' || c?.statusCode === 'PAUSED';
   const hasRunningPackage = !!c?.packages.some((p) => p.endDate >= today);
   const hasPausablePackage = !!c?.packages.some((p) => p.canPause && p.endDate >= today);
   const canPause = isActive && hasPausablePackage;
@@ -305,6 +305,17 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
           ))}
         </div>
       )}
+      {c.pastPackages.length > 0 && (
+        <details className="past-packages">
+          <summary>Past packages ({c.pastPackages.length})</summary>
+          <p className="muted small">Finished packages, moved here at 12 pm on their last day. Kept for history; use “Add package” for a renewal.</p>
+          <div className="package-list">
+            {c.pastPackages.map((p) => (
+              <PackageCard key={p.id} p={p} past />
+            ))}
+          </div>
+        </details>
+      )}
 
       <NotesSection customer={c} onChanged={onChanged} />
 
@@ -364,7 +375,8 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
   );
 }
 
-function PackageCard({ p, onEdit, onDeleted }: { p: CustomerPackage; onEdit: () => void; onDeleted: () => void }) {
+/** One package; `past` packages are read-only (no edit or delete). */
+function PackageCard({ p, onEdit, onDeleted, past }: { p: CustomerPackage; onEdit?: () => void; onDeleted?: () => void; past?: boolean }) {
   const toast = useToast();
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -374,7 +386,7 @@ function PackageCard({ p, onEdit, onDeleted }: { p: CustomerPackage; onEdit: () 
     try {
       await api.deletePackage(p.id);
       toast(`Package ${packageName(p)} deleted.`);
-      onDeleted();
+      onDeleted?.();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'The package could not be deleted.', 'error');
     } finally {
@@ -383,33 +395,35 @@ function PackageCard({ p, onEdit, onDeleted }: { p: CustomerPackage; onEdit: () 
     }
   };
   return (
-    <div className={`package-item ${ended ? 'is-ended' : ''}`}>
+    <div className={`package-item ${ended || past ? 'is-ended' : ''}`}>
       <div className="package-item-header">
         <strong>{packageName(p)}</strong>
-        <div className="package-item-actions">
-          <button className="icon-btn" title="Edit package" aria-label={`Edit package ${packageName(p)}`} onClick={onEdit}>
-            <Pencil size={14} />
-          </button>
-          {p.canDelete && (
-            <button className="icon-btn danger" title="Delete package (not started yet)" aria-label={`Delete package ${packageName(p)}`}
-              onClick={() => setDeleting(true)}>
-              <Trash2 size={14} />
+        {!past && (
+          <div className="package-item-actions">
+            <button className="icon-btn" title="Edit package" aria-label={`Edit package ${packageName(p)}`} onClick={onEdit}>
+              <Pencil size={14} />
             </button>
-          )}
-        </div>
+            {p.canDelete && (
+              <button className="icon-btn danger" title="Delete package (not started yet)" aria-label={`Delete package ${packageName(p)}`}
+                onClick={() => setDeleting(true)}>
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <dl className="facts facts-wide">
         <dt>Dates</dt>
         <dd>
           {formatDay(p.startDate, true)} – {formatDay(p.endDate, true)}
           <div className="item-sub">
-            {ended ? 'Ended' : p.deliveryDaysLeft === 0 ? 'No deliveries left' : `${p.deliveryDaysLeft} delivery day(s) left`}
+            {past ? 'Finished' : ended ? 'Ended' : p.deliveryDaysLeft === 0 ? 'No deliveries left' : `${p.deliveryDaysLeft} delivery day(s) left`}
             {p.frequencyDeliveryDays != null && ` · ${p.frequencyDeliveryDays} delivery days per package`}
           </div>
         </dd>
         <dt>Paused</dt>
         <dd>
-          {p.pauses.length === 0 ? (p.canPause ? 'No paused days' : <span className="muted">{p.frequency} packages cannot pause</span>) : `${p.pauses.length} day(s)`}
+          {p.pauses.length === 0 ? (p.canPause || past ? 'No paused days' : <span className="muted">{p.frequency} packages cannot pause</span>) : `${p.pauses.length} day(s)`}
           {p.pauses.length > 0 && (
             <div className="item-sub">
               {p.pausedCount} of the first {p.maxPauses} extended the end date

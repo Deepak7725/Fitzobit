@@ -326,7 +326,7 @@ public sealed class ClassificationService(
             {
                 c.Id, c.CustomerId, c.CustomerName, c.Address, c.Pincode, c.Locality, c.Latitude, c.Longitude, c.GeocodeMatchLevel, c.GeocodeStatus,
                 c.GeocodeMessage, Status = c.Status!.DisplayName, StatusCode = c.Status.Code,
-                MealTypes = c.Packages.OrderBy(p => p.StartDate).Select(p => p.MealType!.DisplayName).ToList(),
+                MealTypes = c.Packages.Where(p => p.ArchivedAt == null).OrderBy(p => p.StartDate).Select(p => p.MealType!.DisplayName).ToList(),
                 GroupId = c.GroupAssignments.Where(a => a.IsActive).Select(a => (int?)a.DeliveryGroupId).FirstOrDefault(),
                 GroupNumber = c.GroupAssignments.Where(a => a.IsActive).Select(a => (int?)a.DeliveryGroup!.GroupNumber).FirstOrDefault()
             })

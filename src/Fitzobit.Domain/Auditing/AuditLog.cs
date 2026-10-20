@@ -36,6 +36,8 @@ public static class AuditActions
     public const string CustomerPackageAdded = "CustomerPackageAdded";
     public const string CustomerPackageUpdated = "CustomerPackageUpdated";
     public const string CustomerPackageDeleted = "CustomerPackageDeleted";
+    public const string CustomerPackageEnded = "CustomerPackageEnded";
+    public const string CustomerStatusChangedAutomatically = "CustomerStatusChangedAutomatically";
     public const string CustomerNoteAdded = "CustomerNoteAdded";
     public const string CustomerNoteUpdated = "CustomerNoteUpdated";
     public const string CustomerNoteDeleted = "CustomerNoteDeleted";

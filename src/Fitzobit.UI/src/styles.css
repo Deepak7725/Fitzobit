@@ -578,6 +578,9 @@ a.hbar-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 1p
 .data-table .cell-packages { min-width: 220px; }
 .pause-preview { margin: 4px 0 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; }
 .pause-preview p { margin: 0 0 4px; }
+.past-packages { margin-top: 10px; }
+.past-packages > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 4px 0; }
+.past-packages > p { margin: 4px 0 8px; }
 .notes-cell { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .notes-cell li { display: flex; flex-direction: column; }
 .notes-cell-text { white-space: pre-line; overflow-wrap: anywhere; }

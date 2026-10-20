@@ -63,6 +63,7 @@ internal sealed class CustomerPackageConfiguration : IEntityTypeConfiguration<Cu
         b.Property(p => p.UpdatedBy).HasMaxLength(100);
         b.HasIndex(p => new { p.CustomerId, p.StartDate });
         b.HasIndex(p => p.EndDate);
+        b.HasIndex(p => p.ArchivedAt);
         b.HasOne(p => p.Customer).WithMany(c => c.Packages).HasForeignKey(p => p.CustomerId).OnDelete(DeleteBehavior.Restrict);
         // Drop-down values are never deleted while packages use them.
         b.HasOne(p => p.Preference).WithMany().HasForeignKey(p => p.PreferenceId).OnDelete(DeleteBehavior.Restrict);

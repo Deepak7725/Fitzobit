@@ -36,6 +36,7 @@ public sealed class WebTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Database:ConnectionString", _postgres.ConnectionString);
         builder.UseSetting("Geocoding:Provider", "None");        // never call a real geocoder from tests
         builder.UseSetting("Geocoding:BackgroundEnabled", "false");
+        builder.UseSetting("Automation:Enabled", "false");
         builder.UseSetting("Auth:AllowRemoteSetup", _allowRemoteSetup ? "true" : "false");
         if (_setupCode is not null) builder.UseSetting("Auth:SetupCode", _setupCode);
         builder.ConfigureTestServices(services =>

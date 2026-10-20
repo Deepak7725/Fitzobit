@@ -45,7 +45,8 @@ public sealed record PackageSavedDto(int Id, DateOnly StartDate, DateOnly EndDat
 /// <see cref="CustomerPackage.MaxPauses"/> pauses; when editing it can also be set by hand. A package can be deleted only before its
 /// first delivery day.
 /// </summary>
-public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryService dictionaries, DeliveryScheduleService schedule, IAuditLogger audit, IClock clock)
+public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryService dictionaries, DeliveryScheduleService schedule, IAuditLogger audit, IClock clock,
+    CustomerAutomationService automation)
 {
     internal sealed record ValidatedPackage(DictionaryEntry Preference, DictionaryEntry MealType, int Quantity, DictionaryEntry Frequency, DateOnly StartDate,
         DateOnly EndDate);
@@ -61,6 +62,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         audit.RecordChange(AuditActions.CustomerPackageAdded, nameof(Customer), customer.CustomerId,
             $"Package added: {customer.CustomerId} {Describe(v)}", new Dictionary<string, object?>(), Snapshot(v));
         await db.SaveChangesAsync(ct);
+        await automation.ApplyNowAsync(customerId, ct); // after 12 pm, e.g. Active at once when it starts tomorrow
         return new PackageSavedDto(package.Id, package.StartDate, package.EndDate, package.PausedCount);
     }
 
@@ -71,6 +73,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
                       ?? throw new NotFoundException($"Package {packageId} was not found.");
         if (Math.Abs((package.UpdatedAt - DateTime.SpecifyKind(request.ExpectedUpdatedAt, DateTimeKind.Utc)).TotalMilliseconds) > 1)
             throw new BusinessRuleException($"This package was changed by {package.UpdatedBy ?? "another user"} after you opened it. Reload and try again.");
+        if (package.IsPast) throw new BusinessRuleException(PastPackageMessage);
 
         var v = await ValidateAsync(request, package, ct);
         var scheduleChanged = v.StartDate != package.StartDate || v.Frequency.Id != package.FrequencyId;
@@ -114,6 +117,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
             $"Package updated: {package.Customer.CustomerId} {Describe(v with { EndDate = endDate })} ({string.Join(", ", changes.New.Keys)})",
             changes.Old, changes.New);
         await db.SaveChangesAsync(ct);
+        await automation.ApplyNowAsync(package.CustomerId, ct);
         return new PackageSavedDto(package.Id, package.StartDate, package.EndDate, package.PausedCount);
     }
 
@@ -135,7 +139,9 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         await db.SaveChangesAsync(ct);
     }
 
-    public static bool CanDelete(CustomerPackage package, DateOnly today) => package.StartDate > today;
+    public static bool CanDelete(CustomerPackage package, DateOnly today) => !package.IsPast && package.StartDate > today;
+
+    public const string PastPackageMessage = "This package has finished and is in the past packages, which are kept for history only. Use “Add package” for a renewal.";
 
     /// <param name="existing">The package being edited (null when adding). Values it already has stay valid even if since deactivated,
     /// and an unchanged start date is accepted as stored.</param>

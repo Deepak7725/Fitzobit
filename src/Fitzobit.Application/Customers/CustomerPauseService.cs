@@ -33,11 +33,12 @@ public sealed record PackagePauseDto(DateOnly PausedDate, DateOnly PreviousEndDa
 /// Pauses one or more delivery days of a customer. Only packages whose frequency allows pausing (<see cref="DictionaryEntry.CanPause"/>,
 /// e.g. Monthly) are paused; other packages running those days (e.g. Weekly, Trail) are still delivered. Each package's first
 /// <see cref="CustomerPackage.MaxPauses"/> paused days move its end date to the next delivery day (skipping Sundays), so those meals
-/// are not lost; further paused days are skipped and the end date stays. Only active customers, only today or later. Everything
+/// are not lost; further paused days are skipped and the end date stays. Only Active or Paused customers, only today or later. Everything
 /// is saved together in one transaction; package row versions and the unique (package, date) index stop a repeated or concurrent
 /// request from counting twice. <see cref="PreviewAsync"/> runs the same rules without saving.
 /// </summary>
-public sealed class CustomerPauseService(IFitzobitDbContext db, DeliveryScheduleService schedule, IAuditLogger audit, ICurrentUser currentUser, IClock clock)
+public sealed class CustomerPauseService(IFitzobitDbContext db, DeliveryScheduleService schedule, IAuditLogger audit, ICurrentUser currentUser, IClock clock,
+    CustomerAutomationService automation)
 {
     public const int MaxReasonLength = 300;
 
@@ -53,9 +54,9 @@ public sealed class CustomerPauseService(IFitzobitDbContext db, DeliverySchedule
         var customer = await db.Customers.AsNoTracking().Where(c => c.Id == customerId)
                            .Select(c => new { c.Id, c.CustomerId, StatusCode = c.Status!.Code, Status = c.Status.DisplayName }).FirstOrDefaultAsync(ct)
                        ?? throw new NotFoundException($"Customer {customerId} was not found.");
-        if (customer.StatusCode != CustomerStatusCodes.Active)
+        if (customer.StatusCode is not (CustomerStatusCodes.Active or CustomerStatusCodes.Paused))
             throw new BusinessRuleException(
-                $"{customer.CustomerId} is {customer.Status}. Only active customers can pause a delivery; change the status to Active first.");
+                $"{customer.CustomerId} is {customer.Status}. Only active or paused customers can pause a delivery; change the status to Active first.");
 
         var dates = (request.Dates ?? []).Distinct().Order().ToList();
         if (dates.Count == 0) throw new BusinessRuleException("Choose at least one day to pause.");
@@ -69,7 +70,7 @@ public sealed class CustomerPauseService(IFitzobitDbContext db, DeliverySchedule
         if (reason?.Length > MaxReasonLength) throw new BusinessRuleException($"The reason must be at most {MaxReasonLength} characters.");
 
         var query = db.CustomerPackages.Include(p => p.Pauses).Include(p => p.Preference).Include(p => p.MealType).Include(p => p.Frequency)
-            .Where(p => p.CustomerId == customerId && p.EndDate >= today);
+            .Where(p => p.CustomerId == customerId && p.EndDate >= today && p.ArchivedAt == null);
         var packages = await (save ? query : query.AsNoTracking()).OrderBy(p => p.StartDate).ThenBy(p => p.Id).ToListAsync(ct);
         var notPausable = packages.Where(p => !p.Frequency!.CanPause && dates.Any(p.Covers)).Select(Label).ToList();
 
@@ -124,6 +125,7 @@ public sealed class CustomerPauseService(IFitzobitDbContext db, DeliverySchedule
                 PausedDays = r.Days.Select(d => d.Date).ToList() }),
             new { PausedDates = dates, Reason = reason, NotPaused = notPausable });
         await db.SaveChangesAsync(ct);
+        await automation.ApplyNowAsync(customerId, ct); // after 12 pm, e.g. Paused at once when tomorrow is paused
         return new PauseResultDto(dates, results, notPausable);
     }
 
