@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Columns3, Download, Eye, FileSpreadsheet, FileText, FilterX, LocateFixed, Map as MapIcon, Search, Shuffle, Table2, UserPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Columns3, Download, ExternalLink, Eye, FileSpreadsheet, FileText, FilterX, LocateFixed, Map as MapIcon, Search, Shuffle, Table2, UserPlus, X } from 'lucide-react';
 import { api, type CustomerFilter, type CustomerListItem, type ExportFormat, type ExportScope, type NoteSummary, type PackageSummary } from '../api';
 import { useApi, useDebounced } from '../hooks';
 import { formatDate, formatDateTime, formatDay, formatTime } from '../format';
@@ -67,6 +67,19 @@ const COLUMNS: Column[] = [
   { key: 'alternatePhone', label: 'Alternative Phone', className: 'nowrap', render: (c) => c.alternatePhoneNumber ?? <span className="muted">—</span> },
   { key: 'address', label: 'Address', sort: 'address', className: 'cell-wide', render: (c) => c.address ?? '—' },
   { key: 'pincode', label: 'Pincode', sort: 'pincode', render: (c) => c.pincode ?? notSet },
+  {
+    key: 'googleMap',
+    label: 'Google Map',
+    className: 'nowrap',
+    render: (c) =>
+      c.googleMapUrl ? (
+        <a href={c.googleMapUrl} target="_blank" rel="noopener noreferrer" className="external-link" title={c.googleMapUrl} onClick={(e) => e.stopPropagation()}>
+          Open map <ExternalLink size={12} />
+        </a>
+      ) : (
+        <span className="muted">—</span>
+      ),
+  },
   {
     key: 'deliveryTime',
     label: 'Delivery Time',

@@ -26,6 +26,8 @@ public sealed class CustomerPdfWriter : ICustomerExportWriter
     private static readonly Color Muted = Color.FromRgb(0x5B, 0x67, 0x7D);
     private static readonly Color Rule = Color.FromRgb(0xD5, 0xDB, 0xE5);
     private static readonly Color Stripe = Color.FromRgb(0xF4, 0xF6, 0xFA);
+    private static readonly Color LinkBlue = Color.FromRgb(0x1A, 0x56, 0xDB);
+    private const int UrlPieceLength = 36;
 
     public ExportFormat Format => ExportFormat.Pdf;
     public string ContentType => "application/pdf";
@@ -135,6 +137,19 @@ public sealed class CustomerPdfWriter : ICustomerExportWriter
             if (i % 2 == 1) row.Shading.Color = Stripe;
             for (var c = 0; c < columns.Count; c++)
             {
+                if (columns[c].Kind == ExportColumnKind.Url && cells[i][c] is { } url)
+                {
+                    // A clickable link; the long address is shown in fixed pieces, one per line (it has no spaces to wrap at).
+                    var link = row.Cells[c].AddParagraph().AddHyperlink(url, HyperlinkType.Web);
+                    link.Font.Color = LinkBlue;
+                    var pieces = UrlPieces(url);
+                    for (var k = 0; k < pieces.Count; k++)
+                    {
+                        if (k > 0) link.AddCharacter(SymbolName.LineBreak);
+                        link.AddText(pieces[k]);
+                    }
+                    continue;
+                }
                 var paragraph = row.Cells[c].AddParagraph(cells[i][c] ?? "—");
                 if (cells[i][c] is null) paragraph.Format.Font.Color = Muted;
             }
@@ -169,6 +184,11 @@ public sealed class CustomerPdfWriter : ICustomerExportWriter
                 foreach (var row in sample)
                 {
                     var text = row[c] ?? "—";
+                    if (columns[c].Kind == ExportColumnKind.Url)
+                    {
+                        foreach (var piece in UrlPieces(text)) widest = Math.Max(widest, Measure(gfx, piece, font));
+                        continue;
+                    }
                     widest = Math.Max(widest, Measure(gfx, text, font));
                     if (columns[c].Wraps)
                         foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
@@ -233,6 +253,11 @@ public sealed class CustomerPdfWriter : ICustomerExportWriter
     private static double Measure(XGraphics gfx, string text, XFont font) => gfx.MeasureString(text, font).Width * 1.03 + 1.5;
 
     private static double Padding(double fontSize) => Math.Round(fontSize * 0.38, 1);
+
+    /// <summary>A web address cut into pieces of <see cref="UrlPieceLength"/> characters (one line each in the PDF).</summary>
+    private static List<string> UrlPieces(string url) =>
+        Enumerable.Range(0, (url.Length + UrlPieceLength - 1) / UrlPieceLength)
+            .Select(i => url.Substring(i * UrlPieceLength, Math.Min(UrlPieceLength, url.Length - i * UrlPieceLength))).ToList();
 
     private static double[] Scale(double[] widths, double factor) => widths.Select(w => w * factor).ToArray();
 

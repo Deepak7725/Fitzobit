@@ -221,6 +221,7 @@ export interface CustomerListItem {
   alternatePhoneNumber: string | null;
   address: string | null;
   pincode: string | null;
+  googleMapUrl: string | null;
   /** "HH:mm:ss" */
   preferredDeliveryTime: string | null;
   packages: PackageSummary[];
@@ -359,6 +360,7 @@ export interface CustomerDetail {
   alternatePhoneNumber: string | null;
   address: string | null;
   pincode: string | null;
+  googleMapUrl: string | null;
   locality: string | null;
   city: string | null;
   /** "HH:mm:ss" */
@@ -399,6 +401,8 @@ export interface SaveCustomerRequest {
   alternatePhoneNumber: string | null;
   address: string;
   pincode: string | null;
+  /** Optional Google Maps link. */
+  googleMapUrl: string | null;
   /** "HH:mm:ss" */
   preferredDeliveryTime: string | null;
   statusId: number | null;

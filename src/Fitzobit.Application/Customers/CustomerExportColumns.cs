@@ -11,7 +11,9 @@ public enum ExportColumnKind
     Coordinate,
     Date,
     DateTime,
-    Time
+    Time,
+    /// <summary>A web address: a clickable link in Excel and PDF.</summary>
+    Url
 }
 
 /// <param name="Key">The View Data column key (the same key the Customers table uses).</param>
@@ -32,6 +34,7 @@ public static class CustomerExportColumns
         new("alternatePhone", "Alternative Phone", ExportColumnKind.Text, 18, false, r => r.AlternatePhoneNumber),
         new("address", "Address", ExportColumnKind.Text, 52, true, r => r.Address),
         new("pincode", "Pincode", ExportColumnKind.Text, 10, false, r => r.Pincode),
+        new("googleMap", "Google Map", ExportColumnKind.Url, 45, false, r => r.GoogleMapUrl),
         new("deliveryTime", "Delivery Time", ExportColumnKind.Time, 13, false, r => r.PreferredDeliveryTime),
         new("packages", "Packages", ExportColumnKind.Text, 60, true, r => r.Packages),
         new("notes", "Notes", ExportColumnKind.Text, 60, true, r => r.Notes),

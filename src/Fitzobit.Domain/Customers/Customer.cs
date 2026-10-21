@@ -26,6 +26,9 @@ public class Customer : IUserTracked
 
     public string? Pincode { get; set; }
 
+    /// <summary>Optional Google Maps link to the customer's place, as supplied (only stored and shown; locations still come from the address).</summary>
+    public string? GoogleMapUrl { get; set; }
+
     /// <summary>Recognised from the address text, for grouping and reporting.</summary>
     public string? Locality { get; set; }
     public string? City { get; set; }

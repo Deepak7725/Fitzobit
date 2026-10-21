@@ -578,6 +578,7 @@ a.hbar-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 1p
 .data-table .cell-packages { min-width: 220px; }
 .pause-preview { margin: 4px 0 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; }
 .pause-preview p { margin: 0 0 4px; }
+.external-link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .past-packages { margin-top: 10px; }
 .past-packages > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 4px 0; }
 .past-packages > p { margin: 4px 0 8px; }

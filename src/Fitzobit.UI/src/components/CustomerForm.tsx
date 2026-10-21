@@ -12,6 +12,8 @@ export interface CustomerFormValues {
   alternatePhoneNumber: string;
   address: string;
   pincode: string;
+  /** Optional; "" = none. */
+  googleMapUrl: string;
   /** "HH:mm" from the time input. */
   deliveryTime: string;
   statusId: string;
@@ -41,6 +43,7 @@ export function toCustomerRequest(v: CustomerFormValues): SaveCustomerRequest {
     alternatePhoneNumber: v.alternatePhoneNumber.trim() || null,
     address: v.address,
     pincode: v.pincode.trim() || null,
+    googleMapUrl: v.googleMapUrl.trim() || null,
     preferredDeliveryTime: v.deliveryTime ? `${v.deliveryTime.slice(0, 5)}:00` : null,
     statusId: v.statusId ? Number(v.statusId) : null,
   };
@@ -77,9 +80,30 @@ export function validate(v: CustomerFormValues, pincodeRequired: boolean): Custo
   if (!v.address.trim()) errors.address = 'Address is required.';
   if (v.pincode.trim() && !/^[1-9]\d{5}$/.test(v.pincode.trim())) errors.pincode = 'Pincode must be 6 digits.';
   else if (!v.pincode.trim() && pincodeRequired) errors.pincode = 'Pincode is required.';
+  if (v.googleMapUrl.trim() && !isGoogleMapUrl(v.googleMapUrl.trim()))
+    errors.googleMapUrl = 'Paste a Google Maps link, e.g. https://maps.app.goo.gl/… (or leave it empty).';
   if (!v.deliveryTime) errors.deliveryTime = 'Choose the preferred delivery time.';
   if (!v.statusId) errors.statusId = 'Choose a status.';
   return errors;
+}
+
+/** The same check as the server: google.TLD/maps…, maps.google.TLD/…, maps.app.goo.gl/…, goo.gl/maps/… */
+export function isGoogleMapUrl(text: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+  const host = url.hostname.toLowerCase();
+  const maps = url.pathname.toLowerCase().startsWith('/maps');
+  return (
+    host === 'maps.app.goo.gl' ||
+    (host === 'goo.gl' && maps) ||
+    /^maps\.google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host) ||
+    (/^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host) && maps)
+  );
 }
 
 export const MAX_QUANTITY = 20;
@@ -242,6 +266,11 @@ export function CustomerFormFields({ values, onChange, errors, dictionaries, cur
           <Field label="Pincode" error={errors.pincode} htmlFor="pincode">
             <input id="pincode" className="input" value={values.pincode} inputMode="numeric" maxLength={6} autoComplete="off"
               onChange={(e) => set('pincode')(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.pincode || undefined} />
+          </Field>
+          <Field label="Google Maps link (optional)" error={errors.googleMapUrl} span htmlFor="googleMapUrl"
+            hint="In Google Maps: open the place → Share → Copy link, then paste it here.">
+            <input id="googleMapUrl" className="input" type="url" value={values.googleMapUrl} maxLength={2000} autoComplete="off"
+              placeholder="https://maps.app.goo.gl/…" onChange={(e) => set('googleMapUrl')(e.target.value)} aria-invalid={!!errors.googleMapUrl || undefined} />
           </Field>
           {extra}
         </div>

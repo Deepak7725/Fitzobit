@@ -22,7 +22,7 @@ import {
   type PackageFormValues,
 } from '../components/CustomerForm';
 
-const EMPTY: CustomerFormValues = { customerName: '', phoneNumber: '', alternatePhoneNumber: '', address: '', pincode: '', deliveryTime: '', statusId: '' };
+const EMPTY: CustomerFormValues = { customerName: '', phoneNumber: '', alternatePhoneNumber: '', address: '', pincode: '', googleMapUrl: '', deliveryTime: '', statusId: '' };
 const MAX_NOTE = 2000;
 
 interface PackageDraft {

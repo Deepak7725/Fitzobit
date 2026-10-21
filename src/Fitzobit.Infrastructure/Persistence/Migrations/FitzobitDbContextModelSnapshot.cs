@@ -141,6 +141,10 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("GeocodedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("GoogleMapUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<decimal?>("Latitude")
                         .HasPrecision(9, 6)
                         .HasColumnType("numeric(9,6)");

@@ -20,6 +20,7 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         b.Property(c => c.Address).HasMaxLength(500);
         b.Property(c => c.NormalizedAddress).HasMaxLength(500);
         b.Property(c => c.Pincode).HasMaxLength(10);
+        b.Property(c => c.GoogleMapUrl).HasMaxLength(2000); // CustomerCommandService.MaxGoogleMapUrlLength
         b.Property(c => c.Locality).HasMaxLength(200);
         b.Property(c => c.City).HasMaxLength(100);
         b.Property(c => c.Latitude).HasPrecision(9, 6);

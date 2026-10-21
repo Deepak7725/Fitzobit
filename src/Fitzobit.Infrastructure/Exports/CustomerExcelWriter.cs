@@ -33,7 +33,7 @@ public sealed class CustomerExcelWriter : ICustomerExportWriter
             var body = sheet.Range(2, index, lastRow, index).Style;
             switch (column.Kind)
             {
-                case ExportColumnKind.Text: body.NumberFormat.Format = "@"; break;
+                case ExportColumnKind.Text or ExportColumnKind.Url: body.NumberFormat.Format = "@"; break;
                 case ExportColumnKind.Integer: body.NumberFormat.Format = "0"; break;
                 case ExportColumnKind.Coordinate: body.NumberFormat.Format = "0.000000"; break;
                 case ExportColumnKind.Date: body.DateFormat.Format = "dd mmm yyyy"; break;
@@ -89,6 +89,15 @@ public sealed class CustomerExcelWriter : ICustomerExportWriter
                 return;
             case decimal coordinate:
                 cell.SetValue(coordinate);
+                return;
+            case string url when column.Kind == ExportColumnKind.Url:
+                cell.SetValue(url);
+                if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                {
+                    cell.SetHyperlink(new XLHyperlink(uri));
+                    cell.Style.Font.FontColor = XLColor.FromHtml("#1A56DB");
+                    cell.Style.Font.Underline = XLFontUnderlineValues.Single;
+                }
                 return;
             default:
                 // Text columns (and anything unexpected) are written as strings: no number, date or formula conversion.

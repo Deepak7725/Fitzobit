@@ -206,6 +206,35 @@ public class CustomerExportTests
     }
 
     [Fact]
+    public async Task The_google_maps_link_is_a_clickable_link_in_excel_and_pdf()
+    {
+        const string url = "https://www.google.com/maps/place/Government+Raja+Mirasdar+Hospital/@10.7846186,79.1364729,17z";
+        using var test = new TestDatabase();
+        await using (var db = test.CreateContext())
+        {
+            var request = test.NewCustomer();
+            request.GoogleMapUrl = url;
+            await test.Commands(db).CreateAsync(request);
+            await test.Commands(db).CreateAsync(test.NewCustomer("Karthik N", "9123456780")); // no link
+        }
+
+        await using var check = test.CreateContext();
+        var columns = new List<string> { "customerId", "googleMap" };
+        var excel = await Service(test, check).ExportAsync(new CustomerExportRequest { Scope = ExportScope.All, Columns = columns, Filter = new CustomerFilter { Sort = "customerId" } });
+        using var workbook = new XLWorkbook(new MemoryStream(excel.Content));
+        var sheet = workbook.Worksheet("Customers");
+        Assert.Equal("Google Map", sheet.Cell(1, 2).GetString());
+        Assert.Equal(url, sheet.Cell(2, 2).GetString());
+        Assert.True(sheet.Cell(2, 2).HasHyperlink);
+        Assert.Equal(new Uri(url), sheet.Cell(2, 2).GetHyperlink().ExternalAddress);
+        Assert.True(sheet.Cell(3, 2).IsEmpty());
+
+        var pdf = await Service(test, check).ExportAsync(new CustomerExportRequest { Scope = ExportScope.All, Format = ExportFormat.Pdf, Columns = columns });
+        var raw = System.Text.Encoding.Latin1.GetString(pdf.Content);
+        Assert.Contains("/URI", raw); // a clickable web link annotation
+    }
+
+    [Fact]
     public async Task Excel_keeps_ids_phones_and_pincodes_as_text_and_dates_as_dates()
     {
         using var test = new TestDatabase();
@@ -247,7 +276,8 @@ public class CustomerExportTests
     public void Pdf_with_every_column_turns_landscape_and_repeats_over_several_pages()
     {
         var rows = Enumerable.Range(1, 120).Select(i => new CustomerExportRow($"FITZ-{i:000000}", $"Customer with a fairly long name {i}", $"98{i:00000000}",
-            i % 2 == 0 ? $"97{i:00000000}" : null, $"{i} Thiruvenkatasamy Road West, R.S. Puram, Coimbatore, Tamil Nadu 641002", "641002", new TimeOnly(7, 30),
+            i % 2 == 0 ? $"97{i:00000000}" : null, $"{i} Thiruvenkatasamy Road West, R.S. Puram, Coimbatore, Tamil Nadu 641002", "641002",
+            i % 4 == 0 ? $"https://www.google.com/maps/place/Customer+{i}/@10.7867{i:000},79.1378{i:000},17z/data=!3m1!4b1" : null, new TimeOnly(7, 30),
             "With Egg Meal bowl ×1 · Monthly (12 Oct 2026 – 11 Nov 2026); Veg Oats ×2 · Weekly (13 Oct 2026 – 19 Oct 2026)",
             i % 3 == 0 ? "08 Oct 2026, Test Admin: Gate code 1234, call before delivery" : null, new DateOnly(2026, 10, 12), new DateOnly(2026, 11, 11), "Active", i % 3 == 0 ? null : i % 5 + 1, GeocodeStatus.Located,
             GeoMatchLevel.Locality, 11.0123456m, 76.9512345m, new DateTime(2026, 10, 8, 4, 30, 0, DateTimeKind.Utc),

@@ -70,6 +70,7 @@ public sealed record CustomerListItemDto(
     string? AlternatePhoneNumber,
     string? Address,
     string? Pincode,
+    string? GoogleMapUrl,
     TimeOnly? PreferredDeliveryTime,
     IReadOnlyList<PackageSummaryDto> Packages,
     IReadOnlyList<NoteSummaryDto> Notes,
@@ -138,6 +139,7 @@ public sealed record CustomerDetailDto(
     string? AlternatePhoneNumber,
     string? Address,
     string? Pincode,
+    string? GoogleMapUrl,
     string? Locality,
     string? City,
     TimeOnly? PreferredDeliveryTime,
@@ -179,6 +181,7 @@ public sealed class CustomerRow
     public string? AlternatePhoneNumber { get; init; }
     public string? Address { get; init; }
     public string? Pincode { get; init; }
+    public string? GoogleMapUrl { get; init; }
     public TimeOnly? PreferredDeliveryTime { get; init; }
     /// <summary>Current packages (past packages are not counted).</summary>
     public int PackageCount { get; init; }
@@ -215,6 +218,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             AlternatePhoneNumber = c.AlternatePhoneNumber,
             Address = c.Address,
             Pincode = c.Pincode,
+            GoogleMapUrl = c.GoogleMapUrl,
             PreferredDeliveryTime = c.PreferredDeliveryTime,
             PackageCount = c.Packages.Count(p => p.ArchivedAt == null),
             HasAnyPackage = c.Packages.Any(),
@@ -321,7 +325,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         var packages = await PackageSummariesAsync(ids, ct);
         var notes = await NoteSummariesAsync(ids, ct);
         var items = pageRows.Select(r => new CustomerListItemDto(r.Id, r.CustomerId, r.CustomerName, r.PhoneNumber, r.AlternatePhoneNumber,
-                r.Address, r.Pincode, r.PreferredDeliveryTime, packages.GetValueOrDefault(r.Id) ?? [], notes.GetValueOrDefault(r.Id) ?? [], r.StartDate, r.EndDate, r.Status, r.StatusCode, r.GroupId,
+                r.Address, r.Pincode, r.GoogleMapUrl, r.PreferredDeliveryTime, packages.GetValueOrDefault(r.Id) ?? [], notes.GetValueOrDefault(r.Id) ?? [], r.StartDate, r.EndDate, r.Status, r.StatusCode, r.GroupId,
                 r.GroupNumber, r.Latitude, r.Longitude, r.GeocodeStatus.ToString(), r.GeocodeMatchLevel?.ToString(), r.CreatedAt, r.UpdatedAt))
             .ToList();
         return new PagedResult<CustomerListItemDto>(items, total, page, pageSize);
@@ -440,7 +444,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             .OrderByDescending(a => a.OccurredAt).ThenByDescending(a => a.Id).Take(50)
             .ToListAsync(ct);
 
-        return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.AlternatePhoneNumber, c.Address, c.Pincode, c.Locality,
+        return new CustomerDetailDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.NormalizedPhoneNumber, c.AlternatePhoneNumber, c.Address, c.Pincode, c.GoogleMapUrl, c.Locality,
             c.City, c.PreferredDeliveryTime, packageDtos, pastDtos, noteDtos, c.StatusId, c.Status!.DisplayName, c.Status.Code, c.Latitude, c.Longitude,
             c.GeocodeStatus.ToString(), c.GeocodeMatchLevel?.ToString(), c.GeocodeMessage, c.GeocodeSource, c.GeocodedAt, c.GeocodeNextAttemptAt,
             c.LegacyPlan, current?.DeliveryGroupId, current?.GroupNumber, current?.AssignedAt, current?.AssignedBy, history,

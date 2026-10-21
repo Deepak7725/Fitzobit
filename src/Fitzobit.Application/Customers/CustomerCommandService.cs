@@ -30,6 +30,9 @@ public class SaveCustomerRequest
     public string? Address { get; set; }
     public string? Pincode { get; set; }
 
+    /// <summary>Optional Google Maps link (google.com/maps…, maps.google.…, maps.app.goo.gl/…, goo.gl/maps/…).</summary>
+    public string? GoogleMapUrl { get; set; }
+
     /// <summary>The time of day deliveries are wanted (required).</summary>
     public TimeOnly? PreferredDeliveryTime { get; set; }
 
@@ -74,6 +77,7 @@ public sealed partial class CustomerCommandService(
 {
     public const int MaxNameLength = 150;
     public const int MaxAddressLength = 500;
+    public const int MaxGoogleMapUrlLength = 2000;
 
     public async Task<CreateCustomerResult> CreateAsync(CreateCustomerRequest request, CancellationToken ct = default)
     {
@@ -126,6 +130,7 @@ public sealed partial class CustomerCommandService(
         changes.Track("AlternatePhoneNumber", customer.AlternatePhoneNumber, v.AlternatePhone);
         changes.Track("Address", customer.Address, v.Address);
         changes.Track("Pincode", customer.Pincode, v.Pincode);
+        changes.Track("GoogleMapUrl", customer.GoogleMapUrl, v.GoogleMapUrl);
         changes.Track("PreferredDeliveryTime", customer.PreferredDeliveryTime, v.DeliveryTime);
         changes.Track("Status", oldStatus, v.Status.DisplayName);
         if (!changes.HasChanges) return new UpdateCustomerResult(false, [], warnings);
@@ -148,6 +153,7 @@ public sealed partial class CustomerCommandService(
         string Address,
         string? NormalizedAddress,
         string? Pincode,
+        string? GoogleMapUrl,
         string? Locality,
         string? City,
         TimeOnly DeliveryTime,
@@ -191,6 +197,10 @@ public sealed partial class CustomerCommandService(
         if (pincode is null) { if (existing is null || existing.Pincode is not null) errors.Add("Pincode is required."); }
         else if (!Pincode().IsMatch(pincode)) errors.Add("Pincode must be 6 digits (Indian PIN code).");
 
+        var mapUrl = string.IsNullOrWhiteSpace(r.GoogleMapUrl) ? null : r.GoogleMapUrl.Trim();
+        if (mapUrl is not null && !IsGoogleMapUrl(mapUrl))
+            errors.Add("The Google Maps link must be a Google Maps address, e.g. https://maps.app.goo.gl/… or https://www.google.com/maps/…");
+
         if (r.PreferredDeliveryTime is null) errors.Add("Preferred delivery time is required.");
         if (errors.Count > 0) throw new BusinessRuleException(string.Join(" ", errors));
 
@@ -212,7 +222,7 @@ public sealed partial class CustomerCommandService(
         // Minutes are enough for a delivery time; seconds from the client are dropped.
         var time = r.PreferredDeliveryTime!.Value;
         var alternatePhone = alternate.Check == PhoneCheck.Missing ? null : r.AlternatePhoneNumber!.Trim();
-        return new Validated(name, r.PhoneNumber.Trim(), alternatePhone, address!, location.NormalizedLocation, pincode, location.Locality, location.City,
+        return new Validated(name, r.PhoneNumber.Trim(), alternatePhone, address!, location.NormalizedLocation, pincode, mapUrl, location.Locality, location.City,
             new TimeOnly(time.Hour, time.Minute), status);
     }
 
@@ -223,6 +233,7 @@ public sealed partial class CustomerCommandService(
         customer.AlternatePhoneNumber = v.AlternatePhone;
         customer.SetAddress(v.Address, v.NormalizedAddress);
         customer.Pincode = v.Pincode;
+        customer.GoogleMapUrl = v.GoogleMapUrl;
         customer.Locality = v.Locality;
         customer.City = v.City;
         customer.PreferredDeliveryTime = v.DeliveryTime;
@@ -236,10 +247,33 @@ public sealed partial class CustomerCommandService(
         ["AlternatePhoneNumber"] = c.AlternatePhoneNumber,
         ["Address"] = c.Address,
         ["Pincode"] = c.Pincode,
+        ["GoogleMapUrl"] = c.GoogleMapUrl,
         ["PreferredDeliveryTime"] = c.PreferredDeliveryTime,
         ["Status"] = v.Status.DisplayName
     };
 
+    /// <summary>
+    /// An http(s) Google Maps address: google.TLD/maps…, maps.google.TLD/…, maps.app.goo.gl/… or goo.gl/maps/… (TLD such as com or
+    /// co.in), at most <see cref="MaxGoogleMapUrlLength"/> characters.
+    /// </summary>
+    public static bool IsGoogleMapUrl(string url)
+    {
+        if (url.Length > MaxGoogleMapUrlLength || !Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) return false;
+        var host = uri.Host.ToLowerInvariant();
+        var path = uri.AbsolutePath;
+        return host == "maps.app.goo.gl"
+               || (host == "goo.gl" && path.StartsWith("/maps", StringComparison.OrdinalIgnoreCase))
+               || MapsHost().IsMatch(host)
+               || (GoogleHost().IsMatch(host) && path.StartsWith("/maps", StringComparison.OrdinalIgnoreCase));
+    }
+
     [GeneratedRegex(@"^[1-9][0-9]{5}$")]
     private static partial Regex Pincode();
+
+    [GeneratedRegex(@"^maps\.google\.[a-z]{2,3}(\.[a-z]{2})?$")]
+    private static partial Regex MapsHost();
+
+    [GeneratedRegex(@"^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$")]
+    private static partial Regex GoogleHost();
 }

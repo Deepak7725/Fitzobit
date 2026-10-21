@@ -2,7 +2,7 @@
 
 > **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
 > The app was rebuilt around a **new business model** (Parts 1–3 on 2026-10-08, Part 4 on 2026-10-16, pushed and live on 2026-10-17;
-> Part 5 pushed and live on 2026-10-19; Part 6 (daily 12 pm rules) on 2026-10-20 is **not yet committed** — see §0). The user sends the next
+> Parts 5–6 pushed and live (2026-10-19/20); the Google Maps link (Part 7, 2026-10-21) is **not yet committed** — see §0). The user sends the next
 > request in chat — continue from there.
 > **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
@@ -13,19 +13,18 @@
 | Item | Value |
 |---|---|
 | Project root | `E:\ClaudeWorkspace\Fitzobit` (Windows 11; shells: PowerShell + Git Bash) |
-| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`. Parts 1–4, the pincode-lookup fix, the logo/brand colours (2026-10-17) and Part 5 (`3d84344`, 2026-10-19) were pushed by the owner. **Part 6 (§1) is uncommitted in the working tree.** |
+| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`. Parts 1–4, the pincode-lookup fix, the logo/brand colours (2026-10-17) Part 5 (`3d84344`) and Part 6 (`c15add4`) were pushed by the owner. **Part 7 (§1) is uncommitted in the working tree.** |
 | **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–5 (verified 2026-10-19; a browser tab opened before a deploy keeps the old screens until Ctrl+F5 — `index.html` has no Cache-Control header). Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
 | Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
 | Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
-| Migrations | 6: Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
+| Migrations | 7: Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **182 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **193 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
-1. **Commit + push Part 6.** The first 12 pm run after the deploy moves every package that already ended to the past packages and makes
-   customers without a current package Inactive.
+1. **Commit + push Part 7** (Google Maps link). Part 6 is live since 2026-10-20.
 2. **Free 12 pm wake-up ping** (cron-job.org → `https://fitzobit.onrender.com/api/health`, daily 12:01, time zone Asia/Kolkata), so the
    run happens on time on the sleeping free Render plan (otherwise it catches up when someone next opens the app).
 3. (Done 2026-10-17: Parts 1–4 pushed, service city set live, admin created.) Delete `Auth__SetupCode` on Render if still there.
@@ -193,7 +192,15 @@ Decisions asked from the owner (do not change without asking):
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
 
-### Part 6 (done 2026-10-20, not yet committed) — daily 12 pm rules (past packages, automatic statuses)
+### Part 7 (done 2026-10-21, not yet committed) — optional Google Maps link
+Owner's decisions: `Customer.GoogleMapUrl` (optional, ≤ 2000 chars) on Add/Edit customer (Address section), **only stored, shown and
+exported** — it does not set coordinates. Accepted: http(s) google.TLD/maps…, maps.google.TLD/…, maps.app.goo.gl/…, goo.gl/maps/…
+(`CustomerCommandService.IsGoogleMapUrl`, same check in `CustomerForm.tsx`). Shown in the customer panel ("Open in Google Maps", new tab)
+and a "Google Map" table column ("Open map"). Export column `googleMap` (kind `ExportColumnKind.Url`): Excel hyperlink cell, PDF clickable
+link printed in 36-character lines. Verified in the browser on scratch DB `fitzobit_ui` (dropped); the PDF look itself was only checked
+by tests (link annotation present, 120-row layout).
+
+### Part 6 (done 2026-10-20, pushed `c15add4`) — daily 12 pm rules (past packages, automatic statuses)
 Owner's decisions (do not change without asking): `CustomerAutomationService` (Application) + `CustomerAutomationWorker` (Web, checks at
 start-up and every 5 min, `Automation:Enabled`; off in WebTestHost). For each day D from 12 pm India time, looking at the next delivery
 day N (Saturday → Monday):

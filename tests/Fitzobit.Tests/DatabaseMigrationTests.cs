@@ -22,7 +22,7 @@ public class DatabaseMigrationTests
         Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", db.Database.ProviderName);
         Assert.Equal([InitialMigration, "20261008092400_CustomerDictionariesAndDeliveryDates", "20261008100654_DeliveryGroupNumbersAndGeocoding",
                 "20261016094926_CustomerPackagesNotesAndDeliveryTime", "20261019063025_AlternatePhoneAndPausableFrequencies",
-                "20261020074639_PastPackages"],
+                "20261020074639_PastPackages", "20261021043225_GoogleMapUrl"],
             db.Database.GetMigrations());
         var activeIndex = db.Model.FindEntityType(typeof(Domain.DeliveryGroups.CustomerDeliveryGroupAssignment))!
             .GetIndexes().Single(i => i.GetDatabaseName() == "UX_CustomerDeliveryGroupAssignments_ActiveCustomer");

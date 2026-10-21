@@ -90,6 +90,39 @@ public class CustomerTests
         Assert.Null((await check.Customers.SingleAsync(c => c.Id == first.Id)).AlternatePhoneNumber);
     }
 
+    [Theory]
+    [InlineData("https://maps.app.goo.gl/AbCdEf123", true)]
+    [InlineData("https://goo.gl/maps/AbCdEf123", true)]
+    [InlineData("https://www.google.com/maps/place/Thanjavur/@10.78,79.13,15z", true)]
+    [InlineData("https://www.google.co.in/maps?q=10.78,79.13", true)]
+    [InlineData("http://maps.google.com/?q=Thanjavur", true)]
+    [InlineData("https://www.google.com/search?q=thanjavur", false)] // Google, but not Maps
+    [InlineData("https://goo.gl/AbCdEf", false)]
+    [InlineData("https://example.com/maps/place", false)]
+    [InlineData("maps.app.goo.gl/AbCdEf", false)]                     // not a full address
+    [InlineData("javascript:alert(1)", false)]
+    public async Task The_google_maps_link_is_optional_and_must_be_a_google_maps_address(string url, bool valid)
+    {
+        using var test = new TestDatabase();
+        var request = test.NewCustomer();
+        request.GoogleMapUrl = $"  {url}  ";
+        await using var db = test.CreateContext();
+
+        if (!valid)
+        {
+            Assert.Contains("Google Maps link", (await Assert.ThrowsAsync<BusinessRuleException>(() => test.Commands(db).CreateAsync(request))).Message);
+            return;
+        }
+        var id = (await test.Commands(db).CreateAsync(request)).Id;
+        var detail = await test.Queries(db).GetDetailAsync(id);
+        Assert.Equal(url, detail.GoogleMapUrl);
+        Assert.Equal(url, (await test.Queries(db).ListAsync(new CustomerFilter(), 1, 25)).Items.Single().GoogleMapUrl);
+
+        var cleared = await test.Commands(db).UpdateAsync(id, Update(detail, r => r.GoogleMapUrl = ""));
+        Assert.Equal(["GoogleMapUrl"], cleared.ChangedFields);
+        Assert.Null((await test.Queries(db).GetDetailAsync(id)).GoogleMapUrl);
+    }
+
     [Fact]
     public async Task Concurrent_creates_never_share_an_id()
     {

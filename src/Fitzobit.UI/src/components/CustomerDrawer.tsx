@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { History, LocateFixed, MessageSquareText, PauseCircle, Pencil, Plus, RefreshCw, Shuffle, Trash2, X } from 'lucide-react';
+import { ExternalLink, History, LocateFixed, MessageSquareText, PauseCircle, Pencil, Plus, RefreshCw, Shuffle, Trash2, X } from 'lucide-react';
 import { api, type AuditEntry, type CustomerDetail, type CustomerNote, type CustomerPackage, type FilterOption, type JsonValue, type PauseResult } from '../api';
 import { useApi, useDebounced, useDictionaries } from '../hooks';
 import { formatDateTime, formatDay, formatTime, todayIso } from '../format';
@@ -275,6 +275,16 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
         </dd>
         <dt>Pincode</dt>
         <dd>{c.pincode ?? <Missing />}</dd>
+        <dt>Google Map</dt>
+        <dd>
+          {c.googleMapUrl ? (
+            <a href={c.googleMapUrl} target="_blank" rel="noopener noreferrer" className="external-link">
+              Open in Google Maps <ExternalLink size={12} />
+            </a>
+          ) : (
+            <span className="muted">—</span>
+          )}
+        </dd>
         <dt>Status</dt>
         <dd>
           <Badge tone={statusTone(c.statusCode)}>{c.status}</Badge>
@@ -628,6 +638,7 @@ function initialValues(c: CustomerDetail): CustomerFormValues {
     alternatePhoneNumber: c.alternatePhoneNumber ?? '',
     address: c.address ?? '',
     pincode: c.pincode ?? '',
+    googleMapUrl: c.googleMapUrl ?? '',
     deliveryTime: c.preferredDeliveryTime ? c.preferredDeliveryTime.slice(0, 5) : '',
     statusId: String(c.statusId),
   };

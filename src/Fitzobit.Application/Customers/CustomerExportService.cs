@@ -28,6 +28,7 @@ public sealed record CustomerExportRow(
     string? AlternatePhoneNumber,
     string? Address,
     string? Pincode,
+    string? GoogleMapUrl,
     TimeOnly? PreferredDeliveryTime,
     /// <summary>All packages as text, e.g. "Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026); Veg Oats ×2 · Weekly (…)".</summary>
     string? Packages,
@@ -166,7 +167,7 @@ public sealed class CustomerExportService(
         var packages = await queries.PackageSummariesAsync(foundIds, ct);
         var notes = columns.Any(c => c.Key == "notes") ? await queries.NoteSummariesAsync(foundIds, ct) : [];
         var data = found.Select(r => new CustomerExportRow(r.CustomerId, r.CustomerName, r.PhoneNumber, r.AlternatePhoneNumber, r.Address, r.Pincode,
-                r.PreferredDeliveryTime, packages.TryGetValue(r.Id, out var list) ? string.Join("; ", list.Select(p => p.Text)) : null,
+                r.GoogleMapUrl, r.PreferredDeliveryTime, packages.TryGetValue(r.Id, out var list) ? string.Join("; ", list.Select(p => p.Text)) : null,
                 notes.TryGetValue(r.Id, out var n) ? string.Join("; ", n.Select(x => NoteText(x, timeZone))) : null, r.StartDate,
                 r.EndDate, r.Status, r.GroupNumber, r.GeocodeStatus, r.GeocodeMatchLevel, r.Latitude, r.Longitude, r.CreatedAt, r.UpdatedAt))
             .ToList();
