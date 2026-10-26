@@ -151,7 +151,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(StaticFileCaching.Options); // index.html never cached, so a normal reload shows a new deploy
 
 app.UseRouting();
 app.UseRateLimiter();
@@ -161,7 +161,7 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous().DisableRateLimiting();
 app.MapFallback("/api/{**path}", () => Results.NotFound()).AllowAnonymous();
-app.MapFallbackToFile("index.html").AllowAnonymous();
+app.MapFallbackToFile("index.html", StaticFileCaching.Options).AllowAnonymous();
 
 app.Run();
 
