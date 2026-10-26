@@ -62,7 +62,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         audit.RecordChange(AuditActions.CustomerPackageAdded, nameof(Customer), customer.CustomerId,
             $"Package added: {customer.CustomerId} {Describe(v)}", new Dictionary<string, object?>(), Snapshot(v));
         await db.SaveChangesAsync(ct);
-        await automation.ApplyNowAsync(customerId, ct); // after 12 pm, e.g. Active at once when it starts tomorrow
+        await automation.ApplyNowAsync(customerId, packageSaved: true, ct); // e.g. Active at once when it delivers next
         return new PackageSavedDto(package.Id, package.StartDate, package.EndDate, package.PausedCount);
     }
 
@@ -96,6 +96,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
             endDate = typed;
         }
 
+        var datesChanged = scheduleChanged || endDate != package.EndDate;
         var changes = new ChangeSet();
         changes.Track("Preference", package.Preference!.DisplayName, v.Preference.DisplayName);
         changes.Track("MealType", package.MealType!.DisplayName, v.MealType.DisplayName);
@@ -117,7 +118,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
             $"Package updated: {package.Customer.CustomerId} {Describe(v with { EndDate = endDate })} ({string.Join(", ", changes.New.Keys)})",
             changes.Old, changes.New);
         await db.SaveChangesAsync(ct);
-        await automation.ApplyNowAsync(package.CustomerId, ct);
+        await automation.ApplyNowAsync(package.CustomerId, packageSaved: datesChanged, ct);
         return new PackageSavedDto(package.Id, package.StartDate, package.EndDate, package.PausedCount);
     }
 

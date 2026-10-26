@@ -217,6 +217,35 @@ public class CustomerAutomationTests
     }
 
     [Fact]
+    public async Task Adding_a_running_package_or_changing_its_dates_makes_an_inactive_customer_active()
+    {
+        using var test = new TestDatabase();
+        var added = await CreateAsync(test, "9000000001");
+        var edited = await CreateAsync(test, "9000000002", start: D(10, 5)); // weekly Mon 5 – Sat 10 Oct
+        await SetStatusAsync(test, added, CustomerStatusCodes.Inactive);
+        await SetStatusAsync(test, edited, CustomerStatusCodes.Inactive);
+        At(test, 10, 7, 10); // Wednesday morning
+
+        await using (var db = test.CreateContext()) await test.Packages(db).AddAsync(added, test.NewPackage("WEEKLY", D(10, 6), "OATS")); // running since Tue
+        Assert.Equal(CustomerStatusCodes.Active, await StatusAsync(test, added));
+
+        await using (var db = test.CreateContext())
+        {
+            var p = await db.CustomerPackages.AsNoTracking().SingleAsync(x => x.CustomerId == edited);
+            UpdatePackageRequest Request(int quantity, DateOnly? end) => new()
+            {
+                PreferenceId = p.PreferenceId, MealTypeId = p.MealTypeId, Quantity = quantity, FrequencyId = p.FrequencyId, StartDate = p.StartDate,
+                ExpectedUpdatedAt = p.UpdatedAt, EndDate = end
+            };
+            await test.Packages(db).UpdateAsync(p.Id, Request(2, null)); // only the quantity: the status set by hand stays
+            Assert.Equal(CustomerStatusCodes.Inactive, await StatusAsync(test, edited));
+            p = await db.CustomerPackages.AsNoTracking().SingleAsync(x => x.CustomerId == edited);
+            await test.Packages(db).UpdateAsync(p.Id, Request(2, D(10, 14))); // a new end date
+        }
+        Assert.Equal(CustomerStatusCodes.Active, await StatusAsync(test, edited));
+    }
+
+    [Fact]
     public async Task A_status_set_by_hand_is_left_alone_when_no_rule_applies()
     {
         using var test = new TestDatabase();

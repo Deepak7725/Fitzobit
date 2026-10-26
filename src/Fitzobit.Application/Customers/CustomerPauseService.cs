@@ -125,7 +125,7 @@ public sealed class CustomerPauseService(IFitzobitDbContext db, DeliverySchedule
                 PausedDays = r.Days.Select(d => d.Date).ToList() }),
             new { PausedDates = dates, Reason = reason, NotPaused = notPausable });
         await db.SaveChangesAsync(ct);
-        await automation.ApplyNowAsync(customerId, ct); // after 12 pm, e.g. Paused at once when tomorrow is paused
+        await automation.ApplyNowAsync(customerId, ct: ct); // after 12 pm, e.g. Paused at once when tomorrow is paused
         return new PauseResultDto(dates, results, notPausable);
     }
 

@@ -72,16 +72,17 @@ public sealed class CustomerAutomationService(IFitzobitDbContext db, IDeliveryCa
     /// Re-applies the latest due run (<see cref="DueDay"/>) to one customer after a pause or package was saved. After 12 pm that is
     /// today's run (tomorrow paused → Paused at once); before 12 pm it is yesterday's run, which looks at today (owner's decision,
     /// 2026-10-26: a pause for today saved in the morning → Paused at once). A pause for tomorrow saved in the morning still waits for
-    /// today's 12 pm run.
+    /// today's 12 pm run. With <paramref name="packageSaved"/> (a package added or its dates changed), an Inactive or Paused customer
+    /// whose packages deliver on the next delivery day becomes Active even if that package started earlier (owner, 2026-10-26).
     /// </summary>
-    public async Task ApplyNowAsync(int customerId, CancellationToken ct = default)
+    public async Task ApplyNowAsync(int customerId, bool packageSaved = false, CancellationToken ct = default)
     {
-        var result = await RunDayAsync(DueDay(), customerId, ct);
+        var result = await RunDayAsync(DueDay(), customerId, ct, packageSaved);
         if (result.ChangedAnything) await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Applies the rules for day <paramref name="day"/> (to every customer, or one); the caller saves.</summary>
-    private async Task<AutomationRunResult> RunDayAsync(DateOnly day, int? customerId, CancellationToken ct)
+    private async Task<AutomationRunResult> RunDayAsync(DateOnly day, int? customerId, CancellationToken ct, bool packageSaved = false)
     {
         var next = calendar.NextDeliveryDay(day);
         var previous = day;
@@ -127,6 +128,10 @@ public sealed class CustomerAutomationService(IFitzobitDbContext db, IDeliveryCa
             else if (code != CustomerStatusCodes.Active && current.Any(p => p.StartDate > day && p.StartDate <= next) && Delivers(current, next))
             {
                 change = (CustomerStatusCodes.Active, $"a package starts on {next:ddd dd MMM yyyy}");
+            }
+            else if (code != CustomerStatusCodes.Active && packageSaved && Delivers(current, next))
+            {
+                change = (CustomerStatusCodes.Active, $"a package was saved that delivers on {next:ddd dd MMM yyyy}");
             }
             else if (code == CustomerStatusCodes.Active && FullyPaused(current, next))
             {
