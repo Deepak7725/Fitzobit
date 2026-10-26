@@ -8,6 +8,7 @@ import { Badge, Card, ErrorPanel, Loading, PageHeader } from '../components/ui';
 import UsersTab from './settings/UsersTab';
 import DictionariesTab from './settings/DictionariesTab';
 import DeliveryAreaCard from './settings/DeliveryAreaCard';
+import RenewalSettingsCard from './settings/RenewalSettingsCard';
 import AuditTab from './settings/AuditTab';
 
 const TABS = [
@@ -63,6 +64,7 @@ function GeneralTab({ settings }: { settings: AppSettings }) {
     <div className="grid-2">
       <div className="stack">
         <DeliveryAreaCard />
+        <RenewalSettingsCard />
         <Card title={<><UserRound size={18} /> Signed in</>}>
           <dl className="facts facts-wide">
             <dt>Name</dt>

@@ -478,6 +478,40 @@ export interface PauseResult {
   notPaused: string[];
 }
 
+export interface RenewalDue {
+  packageId: number;
+  customerId: number;
+  customerCode: string;
+  customerName: string;
+  phoneNumber: string;
+  status: string;
+  /** "Veg Medium ×1 · Monthly" */
+  package: string;
+  startDate: string;
+  endDate: string;
+  /** Delivery days left, today included, paused days not counted. */
+  daysLeft: number;
+  remindedAt: string | null;
+  remindedBy: string | null;
+  /** The reminder text with the blanks filled in. */
+  message: string;
+  /** https://wa.me/… with the message; null when the main phone is not a 10-digit mobile. */
+  whatsAppUrl: string | null;
+}
+
+export interface RenewalList {
+  daysBefore: number;
+  items: RenewalDue[];
+}
+
+export interface RenewalSettings {
+  daysBefore: number;
+  message: string;
+  defaultMessage: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 export interface BulkResult {
   requested: number;
   changed: number;
@@ -784,6 +818,13 @@ export const api = {
 
   settings: (signal?: AbortSignal) => get<AppSettings>('/api/settings', signal),
   deliveryArea: (signal?: AbortSignal) => get<ServiceArea>('/api/settings/delivery-area', signal),
+  renewalSettings: (signal?: AbortSignal) => get<RenewalSettings>('/api/settings/renewal', signal),
+  saveRenewalSettings: (daysBefore: number, message: string) => send<RenewalSettings>('PUT', '/api/settings/renewal', { daysBefore, message }),
+  /** Packages whose renewal is due (all customers, or one). */
+  renewals: (customerId: number | null, signal?: AbortSignal) =>
+    get<RenewalList>(`/api/customers/renewals${customerId != null ? `?customerId=${customerId}` : ''}`, signal),
+  recordRenewalReminder: (packageId: number) =>
+    send<{ remindedAt: string; remindedBy: string }>('POST', `/api/customers/packages/${packageId}/renewal-reminder`),
   saveDeliveryArea: (city: string, state: string | null) => send<ServiceArea>('PUT', '/api/settings/delivery-area', { city, state }),
 
   classificationMap: (statuses: string[], signal?: AbortSignal) =>

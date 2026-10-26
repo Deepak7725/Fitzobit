@@ -103,6 +103,15 @@ public sealed class SettingsController(
     [Authorize(Policy = Policies.Admin)]
     public Task<ServiceAreaDto> SaveDeliveryArea(SaveServiceAreaRequest request, [FromServices] ServiceAreaService area, CancellationToken ct) =>
         area.SaveAsync(request, ct);
+
+    /// <summary>Renewal reminders: days before the end and the WhatsApp message text.</summary>
+    [HttpGet("renewal")]
+    public Task<RenewalSettingsDto> Renewal([FromServices] RenewalReminderService renewals, CancellationToken ct) => renewals.GetSettingsAsync(ct);
+
+    [HttpPut("renewal")]
+    [Authorize(Policy = Policies.Admin)]
+    public Task<RenewalSettingsDto> SaveRenewal(SaveRenewalSettingsRequest request, [FromServices] RenewalReminderService renewals, CancellationToken ct) =>
+        renewals.SaveSettingsAsync(request, ct);
 }
 
 /// <summary>

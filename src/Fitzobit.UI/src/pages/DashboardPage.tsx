@@ -8,6 +8,7 @@ import {
   History,
   MapPin,
   MapPinOff,
+  MessageCircle,
   PauseCircle,
   UserCheck,
   UserMinus,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api, type DashboardSummary } from '../api';
 import { useApi } from '../hooks';
+import { RenewalsDialog } from '../components/renewals';
 import { formatDateTime, formatNumber } from '../format';
 import { Card, EmptyState, ErrorPanel, Loading, PageHeader, StatCard } from '../components/ui';
 import BarChart from '../components/BarChart';
@@ -141,6 +143,7 @@ function Summary({ data, area, setArea, mix, setMix }: {
             to={`/data?frequency=${f.key}`}
           />
         ))}
+        <RenewalsCard />
         <StatCard
           tone="amber"
           icon={<CalendarClock size={20} />}
@@ -239,6 +242,29 @@ function Summary({ data, area, setArea, mix, setMix }: {
             </Card>
           </div>
         </>
+      )}
+    </>
+  );
+}
+
+/** "Renewals due (n)": opens the list with the WhatsApp reminder buttons. */
+function RenewalsCard() {
+  const renewals = useApi((signal) => api.renewals(null, signal));
+  const [open, setOpen] = useState(false);
+  const list = renewals.data;
+  const reminded = list ? list.items.filter((i) => i.remindedAt).length : 0;
+  return (
+    <>
+      <StatCard
+        tone="green"
+        icon={<MessageCircle size={20} />}
+        label="Renewals Due"
+        value={list ? formatNumber(list.items.length) : renewals.error ? '—' : '…'}
+        hint={list ? `${list.daysBefore} or fewer delivery days left · ${reminded} reminded` : 'Packages ending soon'}
+        onClick={() => setOpen(true)}
+      />
+      {open && (
+        <RenewalsDialog list={list} loading={renewals.loading} error={renewals.error} onReload={renewals.reload} onClose={() => setOpen(false)} />
       )}
     </>
   );

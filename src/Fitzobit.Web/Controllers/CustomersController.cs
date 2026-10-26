@@ -58,6 +58,16 @@ public sealed class CustomersController(
     [HttpPost("{id:int}/pauses/preview")]
     public Task<PauseResultDto> PausePreview(int id, PauseCustomerRequest request, CancellationToken ct) => pauses.PreviewAsync(id, request, ct);
 
+    /// <summary>Packages whose renewal is due (all customers, or one with ?customerId=), with ready-to-send WhatsApp links.</summary>
+    [HttpGet("renewals")]
+    public Task<RenewalListDto> Renewals([FromQuery] int? customerId, [FromServices] RenewalReminderService renewals, CancellationToken ct) =>
+        renewals.ListDueAsync(customerId, ct);
+
+    /// <summary>Records that a renewal reminder was sent for the package ("Send reminder" pressed).</summary>
+    [HttpPost("packages/{packageId:int}/renewal-reminder")]
+    public Task<ReminderRecordedDto> RenewalReminder(int packageId, [FromServices] RenewalReminderService renewals, CancellationToken ct) =>
+        renewals.RecordReminderAsync(packageId, ct);
+
     [HttpPost("{id:int}/packages")]
     public Task<PackageSavedDto> AddPackage(int id, SavePackageRequest request, CancellationToken ct) => packages.AddAsync(id, request, ct);
 

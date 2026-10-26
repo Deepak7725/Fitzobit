@@ -62,6 +62,7 @@ internal sealed class CustomerPackageConfiguration : IEntityTypeConfiguration<Cu
         b.Property(p => p.Version).IsRowVersion();
         b.Property(p => p.CreatedBy).HasMaxLength(100);
         b.Property(p => p.UpdatedBy).HasMaxLength(100);
+        b.Property(p => p.RenewalReminderBy).HasMaxLength(100);
         b.HasIndex(p => new { p.CustomerId, p.StartDate });
         b.HasIndex(p => p.EndDate);
         b.HasIndex(p => p.ArchivedAt);

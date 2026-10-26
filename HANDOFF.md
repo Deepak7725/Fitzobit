@@ -18,9 +18,9 @@
 | Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
 | Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
-| Migrations | 7: Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
+| Migrations | 8: Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **193 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **202 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
@@ -191,6 +191,28 @@ Decisions asked from the owner (do not change without asking):
 - Verified in the browser on scratch DB `fitzobit_ui` (dropped): table columns, alt phone validation (same number refused), pausing
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
+
+### Part 8 (done 2026-10-26, not yet committed) — renewal reminders
+`RenewalReminderService` (Application/Customers), `GET /api/customers/renewals[?customerId=]`, `POST /api/customers/packages/{id}/renewal-reminder`,
+`GET|PUT /api/settings/renewal` (PUT Admin); AppSettings `Renewal.DaysBefore`, `Renewal.Message`; migration `20261026100639_RenewalReminders`
+(`CustomerPackages.RenewalReminderAt/By`); audit `RenewalReminderSent`. UI: `components/renewals.tsx` (list window, Send button = a real
+`<a target=_blank>` to wa.me that also records), dashboard card "Renewals Due", panel badge on the package, `RenewalSettingsCard`.
+Claude's choice: a package counts only once it has **started**. Design as agreed:
+- **Renewal due** = a current package whose delivery days left (today included, paused days not counted) ≤ N; N set in Settings
+  → General (1–30, default 3); all frequencies incl. Trail; not when the customer already has another package starting on/after
+  that end date; Active and Paused customers only (not Inactive).
+- **Dashboard** card "Renewals due (n)" → list window: customer, package, end date, days left, "Reminded <date> by <user>",
+  Send reminder button, open customer. **Customer panel**: "Renewal due" badge + Send reminder + "Reminded … by …" on the package.
+- **Send reminder** = free WhatsApp click-to-chat (`https://wa.me/91<main phone>?text=…`, opens WhatsApp/WhatsApp Web, the user
+  presses Send) to the **main phone**; clicking records reminder date/time/user on the package (+ audit). No automatic sending
+  (the WhatsApp Cloud API code exists but is not configured: needs Meta Business + templates, paid).
+- **Settings → General → "Renewal reminders"**: days before (default 3) and an editable English message with `{name}`,
+  `{package}`, `{endDate}`, `{daysLeft}`; default "Hi {name}, your Fitzobit {package} package ends on {endDate}. Would you like to
+  renew? Just reply to this message. Thank you!"
+- Not included (owner's choice): Customers-screen filter, Tamil text, choosing the alternative phone.
+- Other ideas offered 2026-10-26, not chosen yet: tomorrow's delivery sheet per group + kitchen count, payments, delivered/missed
+  tick-off, undo a pause, exact location from the Google Maps link, no Ctrl+F5 after deploys (Cache-Control on index.html),
+  forgot password.
 
 ### Part 7 (done 2026-10-21, not yet committed) — optional Google Maps link
 Owner's decisions: `Customer.GoogleMapUrl` (optional, ≤ 2000 chars) on Add/Edit customer (Address section), **only stored, shown and

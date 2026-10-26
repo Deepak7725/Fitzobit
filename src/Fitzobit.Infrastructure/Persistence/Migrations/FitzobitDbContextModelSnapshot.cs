@@ -296,6 +296,13 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("RenewalReminderAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RenewalReminderBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 

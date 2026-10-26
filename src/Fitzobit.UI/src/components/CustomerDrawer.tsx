@@ -1,6 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ExternalLink, History, LocateFixed, MessageSquareText, PauseCircle, Pencil, Plus, RefreshCw, Shuffle, Trash2, X } from 'lucide-react';
-import { api, type AuditEntry, type CustomerDetail, type CustomerNote, type CustomerPackage, type FilterOption, type JsonValue, type PauseResult } from '../api';
+import {
+  api,
+  type AuditEntry,
+  type CustomerDetail,
+  type CustomerNote,
+  type CustomerPackage,
+  type FilterOption,
+  type JsonValue,
+  type PauseResult,
+  type RenewalDue,
+} from '../api';
 import { useApi, useDebounced, useDictionaries } from '../hooks';
 import { formatDateTime, formatDay, formatTime, todayIso } from '../format';
 import { Badge, ErrorPanel, Loading } from './ui';
@@ -8,6 +18,7 @@ import { ConfirmDialog, Modal, useToast } from './feedback';
 import ChangeGroupDialog from './ChangeGroupDialog';
 import { GroupPill, LocationBadge, formatCoordinate, groupLabel } from './groups';
 import PauseCalendar, { type DayState } from './PauseCalendar';
+import { RemindedNote, SendReminderButton } from './renewals';
 import {
   CustomerFormFields,
   EMPTY_PACKAGE,
@@ -226,6 +237,9 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
 }) {
   const toast = useToast();
   const [locating, setLocating] = useState(false);
+  // Renewal-due packages of this customer; reloaded whenever the customer is (e.g. after a pause or a new package).
+  const renewals = useApi((signal) => api.renewals(c.id, signal), [c]);
+  const renewalFor = (packageId: number) => renewals.data?.items.find((i) => i.packageId === packageId);
   const retryLocation = async () => {
     setLocating(true);
     try {
@@ -311,7 +325,7 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
       ) : (
         <div className="package-list">
           {c.packages.map((p) => (
-            <PackageCard key={p.id} p={p} onEdit={() => onEditPackage(p)} onDeleted={onChanged} />
+            <PackageCard key={p.id} p={p} onEdit={() => onEditPackage(p)} onDeleted={onChanged} renewal={renewalFor(p.id)} onReminded={renewals.reload} />
           ))}
         </div>
       )}
@@ -385,8 +399,15 @@ function Details({ c, onChanged, onEditPackage, onAddPackage }: {
   );
 }
 
-/** One package; `past` packages are read-only (no edit or delete). */
-function PackageCard({ p, onEdit, onDeleted, past }: { p: CustomerPackage; onEdit?: () => void; onDeleted?: () => void; past?: boolean }) {
+/** One package; `past` packages are read-only (no edit or delete). `renewal` is set while its renewal is due. */
+function PackageCard({ p, onEdit, onDeleted, past, renewal, onReminded }: {
+  p: CustomerPackage;
+  onEdit?: () => void;
+  onDeleted?: () => void;
+  past?: boolean;
+  renewal?: RenewalDue;
+  onReminded?: () => void;
+}) {
   const toast = useToast();
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -422,6 +443,20 @@ function PackageCard({ p, onEdit, onDeleted, past }: { p: CustomerPackage; onEdi
           </div>
         )}
       </div>
+      {renewal && (
+        <div className="renewal-box">
+          <div>
+            <Badge tone="warning">Renewal due</Badge>{' '}
+            <span className="small">
+              {renewal.daysLeft} delivery day{renewal.daysLeft === 1 ? '' : 's'} left
+            </span>
+            <div>
+              <RemindedNote item={renewal} />
+            </div>
+          </div>
+          <SendReminderButton item={renewal} onRecorded={() => onReminded?.()} small />
+        </div>
+      )}
       <dl className="facts facts-wide">
         <dt>Dates</dt>
         <dd>

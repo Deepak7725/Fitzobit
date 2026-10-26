@@ -40,13 +40,15 @@ export function Card({ title, subtitle, actions, children, className = '' }: {
 export type Tone = 'blue' | 'green' | 'amber' | 'violet' | 'teal' | 'rose' | 'slate' | 'indigo';
 
 /** A headline number; with <c>to</c> the whole card links to the matching customers. */
-export function StatCard({ icon, label, value, hint, tone, to }: {
+export function StatCard({ icon, label, value, hint, tone, to, onClick }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   tone: Tone;
   to?: string;
+  /** Makes the card a button (e.g. opening a list window) when there is no link. */
+  onClick?: () => void;
 }) {
   const body = (
     <>
@@ -58,10 +60,16 @@ export function StatCard({ icon, label, value, hint, tone, to }: {
       </div>
     </>
   );
-  return to ? (
-    <Link to={to} className="stat-card stat-card-link">
+  if (to)
+    return (
+      <Link to={to} className="stat-card stat-card-link">
+        {body}
+      </Link>
+    );
+  return onClick ? (
+    <button type="button" className="stat-card stat-card-link stat-card-button" onClick={onClick}>
       {body}
-    </Link>
+    </button>
   ) : (
     <div className="stat-card">{body}</div>
   );

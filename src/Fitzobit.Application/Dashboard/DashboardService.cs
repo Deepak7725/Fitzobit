@@ -52,7 +52,7 @@ public sealed class DashboardService(IFitzobitDbContext db, IClock clock)
         AuditActions.CustomerCreated, AuditActions.CustomerUpdated, AuditActions.CustomerPaused, AuditActions.CustomerAssigned,
         AuditActions.CustomerReassigned, AuditActions.CustomerUnassigned, AuditActions.CustomerPackageAdded, AuditActions.CustomerPackageUpdated,
         AuditActions.CustomerPackageDeleted, AuditActions.CustomerNoteAdded, AuditActions.CustomerNoteUpdated, AuditActions.CustomerNoteDeleted,
-        AuditActions.CustomerPackageEnded, AuditActions.CustomerStatusChangedAutomatically
+        AuditActions.CustomerPackageEnded, AuditActions.CustomerStatusChangedAutomatically, AuditActions.RenewalReminderSent
     ];
 
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken cancellationToken = default)

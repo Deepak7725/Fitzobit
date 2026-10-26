@@ -174,6 +174,10 @@ public class CustomerPackage : IUserTracked
 
     public bool IsPast => ArchivedAt != null;
 
+    /// <summary>When someone last pressed "Send reminder" for this package's renewal, and who (display name).</summary>
+    public DateTime? RenewalReminderAt { get; set; }
+    public string? RenewalReminderBy { get; set; }
+
     /// <summary>PostgreSQL row version (xmin): concurrent changes of the same package fail instead of overwriting each other.</summary>
     public uint Version { get; set; }
 
