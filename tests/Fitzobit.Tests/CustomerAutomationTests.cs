@@ -195,6 +195,28 @@ public class CustomerAutomationTests
     }
 
     [Fact]
+    public async Task A_pause_for_today_saved_in_the_morning_switches_to_paused_at_once()
+    {
+        using var test = new TestDatabase();
+        var id = await CreateAsync(test, frequency: "MONTHLY", start: D(10, 12));
+        At(test, 10, 13, 12);
+        await RunAsync(test);
+
+        At(test, 10, 14, 2, 30); // Wednesday 2:30 am: today's delivery is paused after Tuesday's run
+        await PauseAsync(test, id, D(10, 14));
+        Assert.Equal(CustomerStatusCodes.Paused, await StatusAsync(test, id));
+
+        At(test, 10, 14, 9); // a pause for tomorrow saved in the morning waits for today's 12 pm run
+        await PauseAsync(test, id, D(10, 16));
+        At(test, 10, 14, 12);
+        await RunAsync(test); // Thursday is delivered: Active again
+        Assert.Equal(CustomerStatusCodes.Active, await StatusAsync(test, id));
+        At(test, 10, 15, 12);
+        await RunAsync(test); // Friday 16 is paused
+        Assert.Equal(CustomerStatusCodes.Paused, await StatusAsync(test, id));
+    }
+
+    [Fact]
     public async Task A_status_set_by_hand_is_left_alone_when_no_rule_applies()
     {
         using var test = new TestDatabase();

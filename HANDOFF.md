@@ -212,7 +212,11 @@ day N (Saturday → Monday):
 4. Status **Active** and every package running on N is paused → **Paused**; status **Paused**, the last delivery day ≤ D fully paused and
    something delivers on N → **Active**. A Weekly/Trail package still delivering keeps the customer Active.
 - Event-based: a status set by hand is left alone unless one of these fires. Customer edits do **not** trigger the rules.
-- After 12 pm, saving a pause or adding/editing a package runs the rules for that customer at once (`ApplyNowAsync`).
+- Saving a pause or adding/editing a package re-applies the latest due run to that customer (`ApplyNowAsync` = `RunDayAsync(DueDay())`):
+  after 12 pm today's run (tomorrow paused → Paused at once); before 12 pm yesterday's run, which looks at today, so a pause for **today** saved
+  in the morning → Paused at once (owner, 2026-10-26; FITZ-000040 case). A pause for tomorrow saved in the morning waits for 12 pm.
+- Live runs were late (22 Oct 3:23 pm, 23 Oct 2:47 pm, 24+25 Oct only at 25 Oct 11:39 pm IST) although the owner says the cron-job.org
+  ping is set up; check its settings/history (URL, 12:01, Asia/Kolkata). Days without changes leave no audit entry.
 - Missed days run in order (AppSettings `Automation.LastRunDate`); the very first run only runs the due day (it still archives every
   package that already ended). Audit actions `CustomerPackageEnded`, `CustomerStatusChangedAutomatically` (summary ends "(12 pm run)",
   performer "system" in the background; shown in Recent customer changes).

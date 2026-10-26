@@ -27,8 +27,8 @@ public sealed record AutomationRunResult(DateOnly Day, int PackagesMovedToPast, 
 /// <c>N</c> becomes Active again. A Weekly/Trail package still delivering keeps the customer Active.</item>
 /// </list>
 /// The rules only act at these moments, so a status changed by hand is otherwise left alone. Missed days (server asleep) are run in
-/// order when it wakes (<see cref="RunDueAsync"/>); after 12 pm, a pause or package saved for a customer applies the rules to that
-/// customer straight away (<see cref="ApplyNowAsync"/>). Every change is audited.
+/// order when it wakes (<see cref="RunDueAsync"/>). A pause or package saved later than the run that decided its day applies the rules
+/// to that customer straight away (<see cref="ApplyNowAsync"/>), e.g. a pause for today saved in the morning. Every change is audited.
 /// </summary>
 public sealed class CustomerAutomationService(IFitzobitDbContext db, IDeliveryCalendarService calendar, IAuditLogger audit, IClock clock)
 {
@@ -68,12 +68,15 @@ public sealed class CustomerAutomationService(IFitzobitDbContext db, IDeliveryCa
         return results;
     }
 
-    /// <summary>After 12 pm, applies today's rules to one customer at once (a pause or package saved after the daily run). Before 12 pm the daily run will see it.</summary>
+    /// <summary>
+    /// Re-applies the latest due run (<see cref="DueDay"/>) to one customer after a pause or package was saved. After 12 pm that is
+    /// today's run (tomorrow paused → Paused at once); before 12 pm it is yesterday's run, which looks at today (owner's decision,
+    /// 2026-10-26: a pause for today saved in the morning → Paused at once). A pause for tomorrow saved in the morning still waits for
+    /// today's 12 pm run.
+    /// </summary>
     public async Task ApplyNowAsync(int customerId, CancellationToken ct = default)
     {
-        var now = NowInIndia;
-        if (TimeOnly.FromDateTime(now) < RunTime) return;
-        var result = await RunDayAsync(DateOnly.FromDateTime(now), customerId, ct);
+        var result = await RunDayAsync(DueDay(), customerId, ct);
         if (result.ChangedAnything) await db.SaveChangesAsync(ct);
     }
 
