@@ -1,0 +1,30 @@
+# Wakes the free Render server before the daily 12 pm (India time) customer run, so it happens on time.
+# The free plan sleeps after 15 minutes without visitors; once awake, the app runs the 12 pm rules by itself.
+# cron-job.org could not do this: Render answered its requests with a large page and never started the app (2026-10-26).
+# Times are UTC (India = UTC + 5:30). GitHub may start a scheduled run a few minutes late, hence three runs.
+name: Wake up for the 12 pm run
+
+on:
+  schedule:
+    - cron: "10 6 * * *" # 11:40 am IST
+    - cron: "25 6 * * *" # 11:55 am IST
+    - cron: "35 6 * * *" # 12:05 pm IST (a late start of the others still catches the run)
+  workflow_dispatch: {} # "Run workflow" button for testing
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/health until the app answers
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS --max-time 60 -H "Accept: application/json" https://fitzobit.onrender.com/api/health | grep -q '"ok"'; then
+              echo "Fitzobit is awake."
+              exit 0
+            fi
+            echo "Not awake yet (try $i), waiting 10 seconds..."
+            sleep 10
+          done
+          echo "Fitzobit did not answer within about 5 minutes."
+          exit 1
