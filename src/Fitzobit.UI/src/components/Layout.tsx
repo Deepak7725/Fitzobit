@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Map as MapIcon, Menu, Settings, Table2, UserPlus, UsersRound, X } from 'lucide-react';
+import { ClipboardList, LayoutDashboard, Map as MapIcon, Menu, Settings, Table2, UserPlus, UsersRound, X } from 'lucide-react';
 import { useAuth } from '../auth';
 import UserMenu from './UserMenu';
 
@@ -8,6 +8,7 @@ export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/data', label: 'Customers', icon: Table2 },
   { to: '/customers/new', label: 'Add Customer', icon: UserPlus },
+  { to: '/orders', label: 'Daily Orders', icon: ClipboardList },
   { to: '/map', label: 'Delivery Classification', icon: MapIcon },
   { to: '/groups', label: 'Delivery Groups', icon: UsersRound },
   { to: '/settings', label: 'Settings', icon: Settings },

@@ -1,5 +1,6 @@
 using Fitzobit.Application.Abstractions;
 using Fitzobit.Application.Customers;
+using Fitzobit.Application.DailyOrders;
 using Fitzobit.Application.Geocoding;
 using Fitzobit.Application.Messaging;
 using Fitzobit.Application.Users;
@@ -32,6 +33,8 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHashing, IdentityPasswordHashing>();
         services.AddSingleton<ICustomerExportWriter, CustomerExcelWriter>();
         services.AddSingleton<ICustomerExportWriter, CustomerPdfWriter>();
+        services.AddSingleton<IDailyOrdersExportWriter, DailyOrdersExcelWriter>();
+        services.AddSingleton<IDailyOrdersExportWriter, DailyOrdersPdfWriter>();
         services.AddHttpClient<IWhatsAppService, WhatsAppCloudApiService>(c => c.Timeout = TimeSpan.FromSeconds(20));
         AddGeocoding(services, configuration);
         services.AddScoped<DatabaseInitializer>();

@@ -20,16 +20,17 @@
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
 | Migrations | 8: Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **210 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **214 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
 1. **Commit + push Part 7** (Google Maps link). Part 6 is live since 2026-10-20.
-2. **Free 12 pm wake-up ping** (cron-job.org → `https://fitzobit.onrender.com/api/health`, daily 12:01, time zone Asia/Kolkata), so the
-   run happens on time on the sleeping free Render plan (otherwise it catches up when someone next opens the app).
+2. **12 pm wake-up = GitHub Actions** `.github/workflows/wake-up.yml` (11:40, 11:55, 12:05 IST; "Run workflow" button to test). cron-job.org
+   did NOT work (2026-10-26/27): every call got "output too large" in ~1.5 s — Render answered its servers with a large page and never
+   started the app, while a normal curl with the same headers waited ~24 s and got `{"status":"ok"}`. Disable the cron-job.org job.
 3. (Done 2026-10-17: Parts 1–4 pushed, service city set live, admin created.) Delete `Auth__SetupCode` on Render if still there.
 4. **Reset the Neon password** (it was visible in a screenshot in an earlier chat) and update `Database__ConnectionString` on Render.
-5. Optional: keep-awake pinger (cron-job.org → `/api/health` every 10 min, 07:00–22:00 IST); `Geocoding__Nominatim__ContactEmail` on Render.
+5. Optional: `Geocoding__Nominatim__ContactEmail` on Render. (Keeping the server awake all day would also keep Neon awake — the workers query every minute — and could exceed Neon's free compute hours.)
 6. After the first deploy, try one **PDF export** on the live site (the Linux/Docker font path could not be run locally — see §5).
 
 ### 0.1b Follow-ups done after Part 4 (2026-10-16/17)
@@ -191,6 +192,17 @@ Decisions asked from the owner (do not change without asking):
 - Verified in the browser on scratch DB `fitzobit_ui` (dropped): table columns, alt phone validation (same number refused), pausing
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
+
+### Part 9 (done 2026-10-31, not yet committed) — Daily Orders page (kitchen totals + packing per group)
+Owner's design: menu "Daily Orders" (`/orders`, Admin + Manager). `DailyOrdersService` (Application/DailyOrders), `GET /api/daily-orders[?date=]`,
+`POST /api/daily-orders/export {date, format}`; writers `DailyOrdersExcelWriter` / `DailyOrdersPdfWriter` (Infrastructure/Exports).
+- Day: opens on the next delivery day (Saturday → Monday), any date can be picked; Sundays = no deliveries.
+- Counts **boxes** (quantity) of every package delivering that day: started, not finished, not paused that day, customer status **Active**
+  (current status — tomorrow's list is final after the 12 pm run). Past (archived) packages count when looking back at their dates.
+- Kitchen totals per **meal type × preference** (dictionary sort order) + a groups × meals table; per group (by number, "No group" last)
+  the totals and customers in delivery-time order with all packages on one line, phone(s), address, Google Maps link, all notes.
+- Excel: "Kitchen totals" sheet + one sheet per group. PDF (A4 landscape): totals page + each group on a new page. Exports audited.
+- No migration. Verified on scratch DB `fitzobit_ui` (dropped): numbers, page, both exports, PDF pages rendered and checked.
 
 ### Part 8 (done 2026-10-26, not yet committed) — renewal reminders
 `RenewalReminderService` (Application/Customers), `GET /api/customers/renewals[?customerId=]`, `POST /api/customers/packages/{id}/renewal-reminder`,

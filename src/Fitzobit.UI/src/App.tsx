@@ -6,6 +6,7 @@ import AddCustomerPage from './pages/AddCustomerPage';
 import DeliveryGroupsPage from './pages/DeliveryGroupsPage';
 import DeliveryMapPage from './pages/DeliveryMapPage';
 import SettingsPage from './pages/SettingsPage';
+import DailyOrdersPage from './pages/DailyOrdersPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="customers/new" element={<AddCustomerPage />} />
         <Route path="data" element={<ViewDataPage />} />
         <Route path="groups" element={<DeliveryGroupsPage />} />
+        <Route path="orders" element={<DailyOrdersPage />} />
         <Route path="map" element={<DeliveryMapPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

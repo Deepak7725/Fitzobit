@@ -78,7 +78,7 @@ export function RenewalsDialog({ list, loading, error, onReload, onClose }: {
             <EmptyState icon={<MessageCircle size={22} />} title="No renewals due" message="Nobody's package is ending soon." />
           ) : (
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="table data-table">
                 <thead>
                   <tr>
                     <th>Customer</th>

@@ -578,6 +578,14 @@ a.hbar-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 1p
 .data-table .cell-packages { min-width: 220px; }
 .pause-preview { margin: 4px 0 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; }
 .pause-preview p { margin: 0 0 4px; }
+.orders-date-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.orders-date-bar .input { width: auto; }
+.meal-totals { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.meal-total { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface-2); }
+.meal-total-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; margin-bottom: 6px; }
+.meal-total-head strong { font-size: 20px; color: var(--primary); }
+.meal-total-line { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; border-top: 1px dashed var(--border); }
+.orders-total-row td { font-weight: 700; background: var(--surface-2); }
 .stat-card-button { width: 100%; text-align: left; font: inherit; cursor: pointer; }
 .renewal-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 6px 0 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--warning-bg); border: 1px solid var(--warning-border); }
 .pre-line { white-space: pre-line; }

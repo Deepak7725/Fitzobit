@@ -512,6 +512,49 @@ export interface RenewalSettings {
   updatedBy: string | null;
 }
 
+export interface MealTotal {
+  mealType: string;
+  preference: string;
+  boxes: number;
+}
+
+export interface CustomerOrders {
+  id: number;
+  customerId: string;
+  customerName: string;
+  phoneNumber: string;
+  alternatePhoneNumber: string | null;
+  address: string | null;
+  pincode: string | null;
+  googleMapUrl: string | null;
+  /** "HH:mm:ss" */
+  deliveryTime: string | null;
+  boxes: number;
+  items: { preference: string; mealType: string; quantity: number; frequency: string; text: string }[];
+  notes: string[];
+  /** "Veg Medium ×1 + With Egg Oats ×2" */
+  itemsText: string;
+}
+
+export interface GroupOrders {
+  groupId: number | null;
+  groupNumber: number | null;
+  label: string;
+  boxes: number;
+  totals: MealTotal[];
+  customers: CustomerOrders[];
+}
+
+export interface DailyOrders {
+  date: string;
+  /** False on Sundays. */
+  isDeliveryDay: boolean;
+  totalBoxes: number;
+  totalCustomers: number;
+  totals: MealTotal[];
+  groups: GroupOrders[];
+}
+
 export interface BulkResult {
   requested: number;
   changed: number;
@@ -808,6 +851,9 @@ export const api = {
     send<BulkResult>('POST', '/api/customers/group', { customerIds, groupId, reason }),
   locateCustomers: (ids: number[] | null) => send<{ queued: number }>('POST', '/api/customers/locate', { ids }),
   exportCustomers: (request: ExportRequest) => download('/api/customers/export', request),
+  /** One day's orders; null = the next delivery day. */
+  dailyOrders: (date: string | null, signal?: AbortSignal) => get<DailyOrders>(`/api/daily-orders${query({ date })}`, signal),
+  exportDailyOrders: (date: string, format: ExportFormat) => download('/api/daily-orders/export', { date, format }),
 
   dictionaries: (signal?: AbortSignal) => get<DictionaryOptions>('/api/dictionaries', signal),
   dictionaryEntries: (type: DictionaryType, signal?: AbortSignal) => get<DictionaryEntry[]>(`/api/dictionaries/${type}`, signal),
