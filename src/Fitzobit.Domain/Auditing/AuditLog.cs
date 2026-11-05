@@ -39,6 +39,8 @@ public static class AuditActions
     public const string CustomerPackageEnded = "CustomerPackageEnded";
     public const string CustomerStatusChangedAutomatically = "CustomerStatusChangedAutomatically";
     public const string RenewalReminderSent = "RenewalReminderSent";
+    public const string FestivePauseApplied = "FestivePauseApplied";
+    public const string FestivePauseRemoved = "FestivePauseRemoved";
     public const string CustomerNoteAdded = "CustomerNoteAdded";
     public const string CustomerNoteUpdated = "CustomerNoteUpdated";
     public const string CustomerNoteDeleted = "CustomerNoteDeleted";

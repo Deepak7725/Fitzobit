@@ -50,7 +50,7 @@ public sealed class CustomersController(
     public Task<SchedulePreviewDto> Schedule([FromQuery] int frequencyId, [FromQuery] DateOnly startDate, CancellationToken ct) =>
         schedule.PreviewAsync(frequencyId, startDate, ct);
 
-    /// <summary>Pauses the chosen delivery days of every pausable package running on them; the first 3 per package extend its end date.</summary>
+    /// <summary>Pauses the chosen delivery days of every pausable package running on them; each paused day extends its end date.</summary>
     [HttpPost("{id:int}/pauses")]
     public Task<PauseResultDto> Pause(int id, PauseCustomerRequest request, CancellationToken ct) => pauses.PauseAsync(id, request, ct);
 

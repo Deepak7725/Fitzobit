@@ -1,33 +1,43 @@
 # Fitzobit Delivery Management — Handoff
 
 > **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
-> The app was rebuilt around a **new business model** (Parts 1–3 on 2026-10-08, Part 4 on 2026-10-16, pushed and live on 2026-10-17;
-> Parts 5–6 pushed and live (2026-10-19/20); the Google Maps link (Part 7, 2026-10-21) is **not yet committed** — see §0). The user sends the next
-> request in chat — continue from there.
+> The app was rebuilt around a **new business model** (Parts 1–9 built 2026-10-08 … 10-31 and **pushed/live**; Part 10 "Pause for
+> everyone" (2026-11-04) and Part 11 "No paused days limit" (2026-11-05) built and **NOT yet committed**). **Start with §00.** The owner wants to be asked ("don't assume, ask doubts") — use multiple-choice questions, then show the plan.
 > **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
 ---
 
-## 0. Current state (2026-10-19, after Part 5)
+## 00. NEXT REQUEST — none open (Part 11 done 2026-11-05, not committed)
+
+Part 11 "No paused days limit" is built (see §1 Part 11). Ask the owner what is next; ideas not chosen yet are in §1 Part 8.
+
+---
+
+## 0. Current state (2026-11-05, after Part 11)
 
 | Item | Value |
 |---|---|
 | Project root | `E:\ClaudeWorkspace\Fitzobit` (Windows 11; shells: PowerShell + Git Bash) |
-| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`. Parts 1–4, the pincode-lookup fix, the logo/brand colours (2026-10-17) Part 5 (`3d84344`) and Part 6 (`c15add4`) were pushed by the owner. **Part 7 (§1) is uncommitted in the working tree.** |
-| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–5 (verified 2026-10-19; until 2026-10-26 a tab kept old screens after a deploy; fixed by `Infrastructure/StaticFileCaching.cs`: index.html `no-store`, /assets/* (hashed) 1 year immutable, other files 1 hour). Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
+| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`, in sync with origin up to `f82d3d8` (Daily Orders). Pushed: Parts 1–9 incl. pincode fix, logo, Google Maps link (`0966a70`), renewal reminders (`4f375e8`), same-day pause (`c30072f`), auto-Active on package save (`20cbeba`), no-cache start page (`3560a8a`), GitHub wake-up (`a1cff95`), Daily Orders (`f82d3d8`). **Parts 10 (Pause for everyone) and 11 (No paused days limit) are uncommitted in the working tree** (commit messages in §0.1). |
+| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–9 (until 2026-10-26 a tab kept old screens after a deploy; fixed by `Infrastructure/StaticFileCaching.cs`: index.html `no-store`, /assets/* (hashed) 1 year immutable, other files 1 hour). Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
 | Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
 | Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
-| Migrations | 8: Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
+| Migrations | 10: Part 11 added `20261105060851_UnlimitedPauses` (check `PausedCount >= 0` + one-time recalculation of current packages, see §1 Part 11). Part 10 added `20261104164420_FestivePauses`. Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **214 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 warnings. UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **223 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 code warnings (a full `--no-incremental` rebuild shows 2 analyzer warnings EF1002 in `DatabaseMigrationTests.cs` helpers that predate Part 10/11). UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
-1. **Commit + push Part 7** (Google Maps link). Part 6 is live since 2026-10-20.
-2. **12 pm wake-up = GitHub Actions** `.github/workflows/wake-up.yml` (11:40, 11:55, 12:05 IST; "Run workflow" button to test). cron-job.org
-   did NOT work (2026-10-26/27): every call got "output too large" in ~1.5 s — Render answered its servers with a large page and never
-   started the app, while a normal curl with the same headers waited ~24 s and got `{"status":"ok"}`. Disable the cron-job.org job.
+1. **Commit + push Parts 10 and 11** (both uncommitted; one commit is fine). Suggested message:
+   `Pause for everyone and no paused days limit` — admins pause festive/emergency days for every running package of active and paused
+   customers (migration FestivePauses); every paused day now moves the end date (no 3-day limit, migration UnlimitedPauses recalculates
+   current packages); paused count "own + for everyone" on the package card, Customers column Paused Days, exports and Daily Orders.
+   **After the deploy:** open a customer who had paused more than 3 days and check the new end date; Recent customer changes shows one
+   "Package end date recalculated" line per changed customer (performer "system").
+2. **12 pm wake-up = GitHub Actions** `.github/workflows/wake-up.yml` (11:40, 11:55, 12:05 IST) — pushed and tested green by the owner
+   (2026-10-27). cron-job.org did NOT work (Render answered its servers with a large page and never started the app); owner told to
+   disable that job.
 3. (Done 2026-10-17: Parts 1–4 pushed, service city set live, admin created.) Delete `Auth__SetupCode` on Render if still there.
 4. **Reset the Neon password** (it was visible in a screenshot in an earlier chat) and update `Database__ConnectionString` on Render.
 5. Optional: `Geocoding__Nominatim__ContactEmail` on Render. (Keeping the server awake all day would also keep Neon awake — the workers query every minute — and could exceed Neon's free compute hours.)
@@ -50,6 +60,15 @@
   through `createPortal(…, document.body)`; z-order unchanged (modal 90 > drawer 85, toasts 100). UI type-checks and builds.
 - Possible next items (not requested yet): a "forgot password"/admin reset for the only admin; a script or action to add
   packages to existing customers.
+
+### 0.1c Other things discussed (not code)
+- Trademarks (2026-11-04): official IP India search (tmrsearch.ipindia.gov.in, needs the owner's email/mobile/OTP login and a CAPTCHA per
+  search — the owner types those; Claude fills the fields and reads results). **FITZOBIT**: no conflicts in classes 43 (word + phonetic),
+  30, 9, 35. **REKAMAN** (a software product): none in 9/42 word search, but phonetic class 42 found **"Recoman"** (Pracoss Technologies,
+  registered, software/IT services, valid to 2029) — likely objection; advised a trademark agent. Domains (2026-11-04): fitzobit.com,
+  fitzobit.in, rekaman.in were free; rekaman.com taken (since Feb 2024). Not legal advice.
+- WhatsApp reminders are sent from whichever WhatsApp account is logged in where "Send reminder" is clicked (suggested a WhatsApp Business
+  number linked via WhatsApp Web); no app-side limit, but WhatsApp may restrict spammy numbers.
 
 ### 0.2 User preferences
 - Edits only; the user commits/pushes. Keep changes minimal, incremental and **verified** (build + tests + browser check for UI).
@@ -172,7 +191,7 @@ any; Customers table and exports **one row per customer** with a package summary
   edit; delete of a not-yet-started package; edit without delivery time refused; dashboard counts; PDF export with the new
   columns; phone width without horizontal scroll; no console errors.
 
-### Part 5 (done 2026-10-19, not yet committed) — alternative phone, typed end dates, notes column, new pause rules
+### Part 5 (done 2026-10-19, pushed `3d84344`) — alternative phone, typed end dates, notes column, new pause rules
 Decisions asked from the owner (do not change without asking):
 - **Alternative phone** (optional): same 10-digit rule as the main number, must differ from it, may be shared by other customers;
   shown in Add/Edit customer, the customer panel, a Customers table column and exports. **Not** searchable.
@@ -181,7 +200,7 @@ Decisions asked from the owner (do not change without asking):
   calculated date keeps the calculation). Later pauses extend from the saved end date. New packages: always calculated.
 - **Notes column** on the Customers screen: every note, newest first, with date and writer; also an export column `notes`
   ("19 Oct 2026, Siva Sankari: text; …").
-- **Pauses**: a per-frequency switch `DictionaryEntry.CanPause` (Settings → Dropdown values → Frequencies; Monthly on, others and new
+- **Pauses** (3-day limit replaced by Part 11: every paused day extends): a per-frequency switch `DictionaryEntry.CanPause` (Settings → Dropdown values → Frequencies; Monthly on, others and new
   ones off). Only pausable packages are paused; others running that day are still delivered (`PauseResultDto.NotPaused`). Several
   days per request (`PauseCustomerRequest.Dates`), chosen on a calendar (`components/PauseCalendar.tsx`); `POST
   /api/customers/{id}/pauses/preview` returns the same result without saving. Per package, **all time**, the first
@@ -193,7 +212,45 @@ Decisions asked from the owner (do not change without asking):
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
 
-### Part 9 (done 2026-10-31, not yet committed) — Daily Orders page (kitchen totals + packing per group)
+### Part 11 (done 2026-11-05, not yet committed) — no paused days limit, paused count
+Owner's decisions (asked with options, 2026-11-05):
+- **No limit:** every own paused day moves the package's end date one delivery day (`CustomerPackage.MaxPauses` removed; check
+  `CK_CustomerPackages_PausedCount` is now `>= 0`). The per-frequency **Can pause** switch stays (owner has it on for Monthly and Weekly).
+  `PausedCount` = own paused days inside the package; re-dating counts every own pause inside the new period (no `Take(3)`).
+- **Old pauses recalculated** by migration `20261105060851_UnlimitedPauses` (runs on the next deploy): for current packages only (not
+  past/archived), each own pause inside the package with `NewEndDate = PreviousEndDate` now moves the end date one delivery day (Sunday
+  skipped), in date order; the pause row gets old → new end; `PausedCount` recounted; one audit row per customer (`CustomerPackageUpdated`,
+  "Package end date recalculated: … (13 Nov 2026 → 16 Nov 2026)", performer `system`). Down only restores the check (clamps to 3).
+- **Festive fix (owner approved):** when an own pause moves an end date onto an upcoming day *paused for everyone*, that day is paused for
+  the package too and the end date moves again (`CustomerPackageService.ApplyFestiveDays`, shared with add/re-date). Pause preview/result
+  lists them (`PausedPackageDto.FestiveDays`, replaces `ExtendingPausesLeft`).
+- **Paused count** with split, text from `CustomerPauseService.PausedDaysText` (TS `pausedDaysText` in `format.ts`): "4 (2 own + 2 for
+  everyone)", "2 (own)", "1 (for everyone)", "0". Shown on the package card ("Paused"), in a new Customers column **Paused Days** (key
+  `paused`, sortable, hideable; counts distinct paused dates of current packages; `CustomerListItemDto.PausedDays/OwnPausedDays`), export
+  column `paused` ("Paused Days"), and Daily Orders (page line under the orders, Excel column 12 "Paused Days", PDF small line under Orders)
+  counting the packages delivered that day. The old "· N paused" in the Packages cell was removed.
+- Bulk pause ("Pause for everyone") already extended — unchanged. Manual end date already exists (package pencil → End date) — unchanged;
+  typed end dates are still extended by later pauses (owner confirmed).
+- All "first 3" texts removed (customer panel, Pause dialog, package dialog, Add Customer, Settings → Frequencies, Pause for everyone dialog,
+  README). Tests: `PausedDaysTests` (festive fix, counts in list/export/Daily Orders, migration recalculation) + updated pause tests.
+- Verified on scratch DB `fitzobit_ui` (dropped): Customers column + sort, package card "4 (2 own + 2 for everyone)", pause preview
+  (12 Dec → Mon 14 Dec, "3 own paused day(s) in total"), Daily Orders lines, all four exports 200, no console errors.
+
+### Part 10 (done 2026-11-04, not yet committed) — Pause for everyone (festive / emergency days)
+Owner's decisions: Admin-only button "Pause for everyone" on the Customers page (`components/FestivePauseDialog.tsx`: calendar, server
+preview, reason, list of festive days with Remove). `FestivePauseService` (Application/Customers), `api/festive-pauses` (GET list,
+POST preview, POST, DELETE {id}); entity `FestivePause` (unique Date, Reason) + `PackagePause.FestivePauseId`; migration
+`20261104164420_FestivePauses`; audit `FestivePauseApplied` / `FestivePauseRemoved`.
+- Pauses **every package running that day, any frequency** (Weekly/Trail too), of **Active and Paused** customers (not Inactive); a day the
+  customer already paused is left. Festive pauses **always** move the end date one delivery day and do **not** count towards `PausedCount`
+  (the customer's own 3); own-pause recalculation ignores them.
+- Packages added/created later, or re-dated (start/frequency change, calculated end date), get the upcoming festive days automatically
+  (`CustomerPackageService.ApplyFestiveDaysAsync`); festive pauses outside a re-dated package are dropped. A typed end date is kept as typed.
+- Removable only before the day: each affected end date moves back one delivery day and the pause rows are deleted; customers switched to
+  Paused because of it become Active again when that day was the next one decided by the 12 pm rules.
+- Bulk status change was offered and declined. Verified on scratch DB `fitzobit_ui` (dropped).
+
+### Part 9 (done 2026-10-31, pushed `f82d3d8`) — Daily Orders page (kitchen totals + packing per group)
 Owner's design: menu "Daily Orders" (`/orders`, Admin + Manager). `DailyOrdersService` (Application/DailyOrders), `GET /api/daily-orders[?date=]`,
 `POST /api/daily-orders/export {date, format}`; writers `DailyOrdersExcelWriter` / `DailyOrdersPdfWriter` (Infrastructure/Exports).
 - Day: opens on the next delivery day (Saturday → Monday), any date can be picked; Sundays = no deliveries.
@@ -204,7 +261,7 @@ Owner's design: menu "Daily Orders" (`/orders`, Admin + Manager). `DailyOrdersSe
 - Excel: "Kitchen totals" sheet + one sheet per group. PDF (A4 landscape): totals page + each group on a new page. Exports audited.
 - No migration. Verified on scratch DB `fitzobit_ui` (dropped): numbers, page, both exports, PDF pages rendered and checked.
 
-### Part 8 (done 2026-10-26, not yet committed) — renewal reminders
+### Part 8 (done 2026-10-26, pushed `4f375e8`) — renewal reminders
 `RenewalReminderService` (Application/Customers), `GET /api/customers/renewals[?customerId=]`, `POST /api/customers/packages/{id}/renewal-reminder`,
 `GET|PUT /api/settings/renewal` (PUT Admin); AppSettings `Renewal.DaysBefore`, `Renewal.Message`; migration `20261026100639_RenewalReminders`
 (`CustomerPackages.RenewalReminderAt/By`); audit `RenewalReminderSent`. UI: `components/renewals.tsx` (list window, Send button = a real
@@ -226,7 +283,7 @@ Claude's choice: a package counts only once it has **started**. Design as agreed
   tick-off, undo a pause, exact location from the Google Maps link, no Ctrl+F5 after deploys (Cache-Control on index.html),
   forgot password.
 
-### Part 7 (done 2026-10-21, not yet committed) — optional Google Maps link
+### Part 7 (done 2026-10-21, pushed `0966a70`) — optional Google Maps link
 Owner's decisions: `Customer.GoogleMapUrl` (optional, ≤ 2000 chars) on Add/Edit customer (Address section), **only stored, shown and
 exported** — it does not set coordinates. Accepted: http(s) google.TLD/maps…, maps.google.TLD/…, maps.app.goo.gl/…, goo.gl/maps/…
 (`CustomerCommandService.IsGoogleMapUrl`, same check in `CustomerForm.tsx`). Shown in the customer panel ("Open in Google Maps", new tab)
@@ -337,6 +394,22 @@ lucide-react, Node 24 (Docker node:20).
   `HTMLAnchorElement.prototype.click` in the page to capture the request instead.
 - Docker is not installed locally (no WSL either); `dotnet publish -c Release` reproduces the Docker build step.
 
+### Scratch-DB browser check (used for every part since Part 5)
+The scratchpad is cleared between chats, so recreate this PowerShell script there and run it in the background (PowerShell tool):
+```
+$settings = Get-Content 'E:\ClaudeWorkspace\Fitzobit\src\Fitzobit.Web\appsettings.Local.json' -Raw | ConvertFrom-Json
+$env:Database__ConnectionString = $settings.Database.ConnectionString -replace '(?i)Database=[^;]*', 'Database=fitzobit_ui'
+$env:ASPNETCORE_ENVIRONMENT = 'Development'; $env:Geocoding__Provider = 'None'
+Set-Location 'E:\ClaudeWorkspace\Fitzobit'
+dotnet run --project src\Fitzobit.Web --no-launch-profile --urls http://localhost:5091 --artifacts-path E:\ClaudeWorkspace\Fitzobit\artifacts\uicheck
+```
+Wait for `http://localhost:5091/api/health`, open it in the built-in browser, do first-run setup from the page with a password generated in
+the page (`crypto.randomUUID()+'Aa1!'`, never shown), create data with `fetch` + header `X-XSRF-TOKEN` (cookie `XSRF-TOKEN`). Clean up by
+stopping the process (`Get-CimInstance Win32_Process`, CommandLine like `*Fitzobit.Web*` and `*5091*` -> `Stop-Process`) and
+`dotnet ef database drop -f -p src\Fitzobit.Infrastructure -s src\Fitzobit.Infrastructure` with `FITZOBIT_DB_CONNECTION` set the same way.
+Writing the postgres password into a pgpass file is blocked by the sandbox classifier: keep connection strings in memory only.
+Browser pane gotcha: after a layout change, clicks by coordinate can hit the wrong calendar day; prefer refs (`find`) or check the selection.
+
 ### Gotchas
 - Bash tool: heredocs with quotes/backticks (TSX, `''`) break → write a `.py` edit script to the scratchpad with the Write tool and
   run it (exact-match asserts). Some files had BOMs (read with `utf-8-sig`).
@@ -398,8 +471,9 @@ lucide-react, Node 24 (Docker node:20).
 
 ```
 Continue working on the Fitzobit Delivery Management app in E:\ClaudeWorkspace\Fitzobit.
-First read E:\ClaudeWorkspace\Fitzobit\HANDOFF.md completely (section 0 = current state and open items,
-section 1 = what Parts 1-4 of the new business model built, section 3 = how to build/test/verify).
+First read E:\ClaudeWorkspace\Fitzobit\HANDOFF.md completely (section 00 = my next request and the questions
+to ask me, section 0 = current state and open items, section 1 = what Parts 1-11 built, section 3 = how to
+build/test/verify).
 Inspect the existing code before changing anything. Do not rebuild working functionality.
 Use PostgreSQL (local appsettings.Local.json / Neon). Do not run git commit or git push - I commit and push myself.
 If anything is unclear, ask me with options instead of assuming.

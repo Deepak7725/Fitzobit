@@ -22,6 +22,8 @@ public sealed record OrderItemDto(string Preference, string MealType, int Quanti
 }
 
 /// <summary>One customer's delivery that day: all their packages together (packed in one bag).</summary>
+/// <param name="PausedDays">Paused days of the packages delivered that day (each day once); <see cref="OwnPausedDays"/> of them paused by
+/// the customer, the rest for everyone.</param>
 public sealed record CustomerOrdersDto(
     int Id,
     string CustomerId,
@@ -34,10 +36,15 @@ public sealed record CustomerOrdersDto(
     TimeOnly? DeliveryTime,
     int Boxes,
     IReadOnlyList<OrderItemDto> Items,
-    IReadOnlyList<string> Notes)
+    IReadOnlyList<string> Notes,
+    int PausedDays = 0,
+    int OwnPausedDays = 0)
 {
     /// <summary>"Veg Medium ×1 + With Egg Oats ×2"</summary>
     public string ItemsText => string.Join(" + ", Items.Select(i => i.Text));
+
+    /// <summary>"5 (2 own + 3 for everyone)"; "0" when nothing was paused.</summary>
+    public string PausedText => CustomerPauseService.PausedDaysText(OwnPausedDays, PausedDays - OwnPausedDays);
 }
 
 /// <summary>A delivery group's orders (GroupId null = customers without a group).</summary>
@@ -91,6 +98,10 @@ public sealed class DailyOrdersService(IFitzobitDbContext db, IDeliveryCalendarS
             .ToListAsync(ct);
 
         var customerIds = packages.Select(p => p.CustomerId).Distinct().ToList();
+        var packageIds = packages.Select(p => p.Id).ToList();
+        var pauses = (await db.PackagePauses.AsNoTracking().Where(x => packageIds.Contains(x.PackageId))
+                .Select(x => new { x.Package!.CustomerId, x.PausedDate, Own = x.FestivePauseId == null }).ToListAsync(ct))
+            .ToLookup(x => x.CustomerId);
         var customers = await db.Customers.AsNoTracking().Where(c => customerIds.Contains(c.Id))
             .Select(c => new
             {
@@ -118,12 +129,14 @@ public sealed class DailyOrdersService(IFitzobitDbContext db, IDeliveryCalendarS
         {
             var items = byCustomer[c.Id].OrderBy(p => p.MealOrder).ThenBy(p => p.PreferenceOrder).ThenBy(p => p.StartDate).ThenBy(p => p.Id)
                 .Select(p => new OrderItemDto(p.Preference, p.MealType, p.Quantity, p.Frequency)).ToList();
+            var paused = pauses[c.Id].ToList();
             return new
             {
                 c.GroupId,
                 c.GroupNumber,
                 Order = new CustomerOrdersDto(c.Id, c.CustomerId, c.CustomerName, c.PhoneNumber, c.AlternatePhoneNumber, c.Address, c.Pincode, c.GoogleMapUrl,
-                    c.PreferredDeliveryTime, items.Sum(i => i.Quantity), items, notes[c.Id].ToList())
+                    c.PreferredDeliveryTime, items.Sum(i => i.Quantity), items, notes[c.Id].ToList(),
+                    paused.Select(x => x.PausedDate).Distinct().Count(), paused.Where(x => x.Own).Select(x => x.PausedDate).Distinct().Count())
             };
         }).ToList();
 

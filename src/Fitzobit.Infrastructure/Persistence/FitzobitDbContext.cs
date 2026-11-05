@@ -20,6 +20,7 @@ public class FitzobitDbContext(DbContextOptions<FitzobitDbContext> options, ICur
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<CustomerPackage> CustomerPackages => Set<CustomerPackage>();
     public DbSet<PackagePause> PackagePauses => Set<PackagePause>();
+    public DbSet<FestivePause> FestivePauses => Set<FestivePause>();
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
     public DbSet<DictionaryEntry> DictionaryEntries => Set<DictionaryEntry>();
     public DbSet<DeliveryGroup> DeliveryGroups => Set<DeliveryGroup>();

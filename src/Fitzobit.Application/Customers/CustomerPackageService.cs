@@ -4,6 +4,7 @@ using Fitzobit.Application.Common;
 using Fitzobit.Application.Dictionaries;
 using Fitzobit.Domain.Auditing;
 using Fitzobit.Domain.Customers;
+using Fitzobit.Domain.Deliveries;
 using Fitzobit.Domain.Dictionaries;
 using Microsoft.EntityFrameworkCore;
 
@@ -41,8 +42,8 @@ public sealed record PackageSavedDto(int Id, DateOnly StartDate, DateOnly EndDat
 
 /// <summary>
 /// A customer's packages: add, edit and delete. Each package has its own preference, meal type, quantity, frequency and dates; the
-/// end date is calculated in delivery days (<see cref="DeliveryScheduleService"/>) and extended by the package's first
-/// <see cref="CustomerPackage.MaxPauses"/> pauses; when editing it can also be set by hand. A package can be deleted only before its
+/// end date is calculated in delivery days (<see cref="DeliveryScheduleService"/>) and extended by every paused day; when editing it
+/// can also be set by hand (later pauses still extend it). A package can be deleted only before its
 /// first delivery day.
 /// </summary>
 public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryService dictionaries, DeliveryScheduleService schedule, IAuditLogger audit, IClock clock,
@@ -59,6 +60,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         var v = await ValidateAsync(request, null, ct);
         var package = NewPackage(v);
         customer.Packages.Add(package);
+        await ApplyFestiveDaysAsync(package, ct);
         audit.RecordChange(AuditActions.CustomerPackageAdded, nameof(Customer), customer.CustomerId,
             $"Package added: {customer.CustomerId} {Describe(v)}", new Dictionary<string, object?>(), Snapshot(v));
         await db.SaveChangesAsync(ct);
@@ -83,11 +85,19 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         {
             if (!request.ConfirmScheduleChange)
                 throw new BusinessRuleException("Changing the start date or frequency recalculates the end date. Confirm the change to continue.");
-            // Only the first paused days inside the new period extend it, as when pausing.
-            var extending = package.Pauses.Select(p => p.PausedDate).Where(d => d >= v.StartDate).Order().Take(CustomerPackage.MaxPauses).ToList();
-            endDate = schedule.CalculateEndDate(v.StartDate, v.Frequency, extending);
-            pausedCount = extending.Count(d => d <= endDate);
+            // Every paused day inside the new period extends it, the customer's own and those paused for everyone.
+            var own = package.Pauses.Where(p => p.FestivePauseId == null).Select(p => p.PausedDate).Where(d => d >= v.StartDate).Order().ToList();
+            var festive = package.Pauses.Where(p => p.FestivePauseId != null && p.PausedDate >= v.StartDate).Select(p => p.PausedDate).ToList();
+            endDate = schedule.CalculateEndDate(v.StartDate, v.Frequency, [.. own, .. festive]);
+            pausedCount = own.Count(d => d <= endDate);
+            // Days paused for everyone that are no longer inside the package are dropped; new ones inside it are added below.
+            foreach (var outside in package.Pauses.Where(p => p.FestivePauseId != null && (p.PausedDate < v.StartDate || p.PausedDate > endDate)).ToList())
+            {
+                package.Pauses.Remove(outside);
+                db.PackagePauses.Remove(outside);
+            }
         }
+        var typedEndDate = request.EndDate is { } t && t != endDate;
         if (request.EndDate is { } typed && typed != endDate)
         {
             if (typed < v.StartDate) throw new BusinessRuleException("The end date cannot be before the start date.");
@@ -114,6 +124,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         package.StartDate = v.StartDate;
         package.EndDate = endDate;
         package.PausedCount = pausedCount;
+        if (scheduleChanged && !typedEndDate) await ApplyFestiveDaysAsync(package, ct); // a typed end date is kept as typed
         audit.RecordChange(AuditActions.CustomerPackageUpdated, nameof(Customer), package.Customer!.CustomerId,
             $"Package updated: {package.Customer.CustomerId} {Describe(v with { EndDate = endDate })} ({string.Join(", ", changes.New.Keys)})",
             changes.Old, changes.New);
@@ -141,6 +152,28 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
     }
 
     public static bool CanDelete(CustomerPackage package, DateOnly today) => !package.IsPast && package.StartDate > today;
+
+    /// <summary>Pauses the upcoming days paused for everyone that fall inside the package (each moves its end date one delivery day).</summary>
+    internal async Task ApplyFestiveDaysAsync(CustomerPackage package, CancellationToken ct)
+    {
+        var today = DeliveryScheduleService.Today(clock);
+        var festive = await db.FestivePauses.AsNoTracking().Where(f => f.Date >= today && f.Date >= package.StartDate).OrderBy(f => f.Date).ToListAsync(ct);
+        ApplyFestiveDays(package, festive, schedule.Calendar);
+    }
+
+    /// <summary>Pauses the given days paused for everyone (in date order) that fall inside the package and are not paused yet; each moves
+    /// its end date one delivery day, so a later one may come inside as well. Returns the days added.</summary>
+    internal static List<DateOnly> ApplyFestiveDays(CustomerPackage package, IEnumerable<FestivePause> festive, IDeliveryCalendarService calendar)
+    {
+        var added = new List<DateOnly>();
+        foreach (var f in festive.OrderBy(f => f.Date))
+        {
+            if (!package.Covers(f.Date) || package.Pauses.Any(x => x.PausedDate == f.Date)) continue;
+            FestivePauseService.AddFestivePause(package, f, calendar.ExtendEndDateForPause(package.EndDate));
+            added.Add(f.Date);
+        }
+        return added;
+    }
 
     public const string PastPackageMessage = "This package has finished and is in the past packages, which are kept for history only. Use “Add package” for a renewal.";
 

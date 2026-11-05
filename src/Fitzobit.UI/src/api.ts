@@ -240,6 +240,12 @@ export interface CustomerListItem {
   geocodeMatchLevel: GeoMatchLevel | null;
   createdAt: string;
   updatedAt: string;
+  /** Paused days of the current packages (each day once); ownPausedDays of them paused by the customer, festivePausedDays for everyone. */
+  pausedDays: number;
+  ownPausedDays: number;
+  festivePausedDays: number;
+  /** "5 (2 own + 3 for everyone)", "2 (own)", "0" */
+  pausedText: string;
 }
 
 export type GeocodeStatus = 'Pending' | 'Located' | 'NotFound' | 'Failed';
@@ -293,9 +299,6 @@ export interface PackageSummary {
   frequency: string;
   startDate: string;
   endDate: string;
-  pausedCount: number;
-  /** Every paused day (pausedCount counts only those that extended the end date). */
-  pausedDays: number;
   /** "Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026)" */
   text: string;
 }
@@ -315,9 +318,8 @@ export interface CustomerPackage {
   startDate: string;
   endDate: string;
   deliveryDaysLeft: number | null;
-  /** Paused days that extended the end date (at most maxPauses); pauses lists every paused day. */
+  /** The customer's own paused days inside the package (each moved the end date); pauses lists every paused day. */
   pausedCount: number;
-  maxPauses: number;
   pauses: CustomerPause[];
   /** The first delivery day has not come yet. */
   canDelete: boolean;
@@ -346,6 +348,8 @@ export interface CustomerPause {
   newEndDate: string;
   /** This pause moved the end date (only a package's first paused days do). */
   extendedEndDate: boolean;
+  /** Paused for everyone (festive/emergency): always extends, not one of the package's own pauses. */
+  festive: boolean;
   reason: string | null;
   createdAt: string;
   createdBy: string | null;
@@ -468,7 +472,8 @@ export interface PausedPackage {
   newEndDate: string;
   days: { date: string; extendedEndDate: boolean }[];
   pausedCount: number;
-  extendingPausesLeft: number;
+  /** Days paused for everyone that the moved end date now reaches; they are paused too. */
+  festiveDays: string[];
 }
 
 export interface PauseResult {
@@ -534,6 +539,10 @@ export interface CustomerOrders {
   notes: string[];
   /** "Veg Medium ×1 + With Egg Oats ×2" */
   itemsText: string;
+  /** Paused days of the packages delivered that day; pausedText e.g. "5 (2 own + 3 for everyone)". */
+  pausedDays: number;
+  ownPausedDays: number;
+  pausedText: string;
 }
 
 export interface GroupOrders {
@@ -553,6 +562,25 @@ export interface DailyOrders {
   totalCustomers: number;
   totals: MealTotal[];
   groups: GroupOrders[];
+}
+
+export interface FestivePause {
+  id: number;
+  date: string;
+  reason: string | null;
+  customers: number;
+  packages: number;
+  createdAt: string;
+  createdBy: string | null;
+  /** The day has not come yet. */
+  canRemove: boolean;
+}
+
+export interface FestivePreview {
+  dates: string[];
+  customers: number;
+  packages: number;
+  items: { customerId: number; customerCode: string; customerName: string; package: string; previousEndDate: string; newEndDate: string; days: string[] }[];
 }
 
 export interface BulkResult {
@@ -851,6 +879,10 @@ export const api = {
     send<BulkResult>('POST', '/api/customers/group', { customerIds, groupId, reason }),
   locateCustomers: (ids: number[] | null) => send<{ queued: number }>('POST', '/api/customers/locate', { ids }),
   exportCustomers: (request: ExportRequest) => download('/api/customers/export', request),
+  festivePauses: (signal?: AbortSignal) => get<FestivePause[]>('/api/festive-pauses', signal),
+  previewFestivePause: (dates: string[], reason: string | null) => send<FestivePreview>('POST', '/api/festive-pauses/preview', { dates, reason }),
+  createFestivePause: (dates: string[], reason: string | null) => send<FestivePreview>('POST', '/api/festive-pauses', { dates, reason }),
+  removeFestivePause: (id: number) => send('DELETE', `/api/festive-pauses/${id}`),
   /** One day's orders; null = the next delivery day. */
   dailyOrders: (date: string | null, signal?: AbortSignal) => get<DailyOrders>(`/api/daily-orders${query({ date })}`, signal),
   exportDailyOrders: (date: string, format: ExportFormat) => download('/api/daily-orders/export', { date, format }),

@@ -56,7 +56,7 @@ internal sealed class CustomerPackageConfiguration : IEntityTypeConfiguration<Cu
         b.ToTable("CustomerPackages", t =>
         {
             t.HasCheckConstraint("CK_CustomerPackages_Quantity", $"\"Quantity\" BETWEEN 1 AND {CustomerPackage.MaxQuantity}");
-            t.HasCheckConstraint("CK_CustomerPackages_PausedCount", $"\"PausedCount\" BETWEEN 0 AND {CustomerPackage.MaxPauses}");
+            t.HasCheckConstraint("CK_CustomerPackages_PausedCount", "\"PausedCount\" >= 0");
             t.HasCheckConstraint("CK_CustomerPackages_Dates", "\"EndDate\" >= \"StartDate\"");
         });
         b.Property(p => p.Version).IsRowVersion();
@@ -85,6 +85,19 @@ internal sealed class PackagePauseConfiguration : IEntityTypeConfiguration<Packa
         b.HasIndex(p => p.PausedDate);
         // Deleting a package (only allowed before its first delivery) removes its pauses with it.
         b.HasOne(p => p.Package).WithMany(k => k.Pauses).HasForeignKey(p => p.PackageId).OnDelete(DeleteBehavior.Cascade);
+        // Removing a festive pause undoes its package pauses first (end dates move back), then deletes it.
+        b.HasOne(p => p.FestivePause).WithMany(f => f.Pauses).HasForeignKey(p => p.FestivePauseId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class FestivePauseConfiguration : IEntityTypeConfiguration<FestivePause>
+{
+    public void Configure(EntityTypeBuilder<FestivePause> b)
+    {
+        b.ToTable("FestivePauses");
+        b.Property(f => f.Reason).HasMaxLength(300);
+        b.Property(f => f.CreatedBy).HasMaxLength(100);
+        b.HasIndex(f => f.Date).IsUnique();
     }
 }
 

@@ -94,7 +94,7 @@ public sealed class DailyOrdersExcelWriter : IDailyOrdersExportWriter
         sheet.Cell(3, 1).Value = string.Join("  ·  ", group.Totals.Select(t => $"{t.MealType} {t.Preference}: {t.Boxes}"));
 
         const int head = 5;
-        string[] headers = ["Time", "Customer ID", "Customer Name", "Orders", "Boxes", "Phone Number", "Alternative Phone", "Address", "Pincode", "Google Map", "Notes"];
+        string[] headers = ["Time", "Customer ID", "Customer Name", "Orders", "Boxes", "Phone Number", "Alternative Phone", "Address", "Pincode", "Google Map", "Notes", "Paused Days"];
         Header(sheet.Range(head, 1, head, headers.Length), headers);
         sheet.Range(head + 1, 2, Math.Max(head + 1, head + group.Customers.Count), 2).Style.NumberFormat.Format = "@";
         sheet.Range(head + 1, 6, Math.Max(head + 1, head + group.Customers.Count), 7).Style.NumberFormat.Format = "@";
@@ -125,11 +125,12 @@ public sealed class DailyOrdersExcelWriter : IDailyOrdersExportWriter
                 sheet.Cell(row, 10).Style.Font.Underline = XLFontUnderlineValues.Single;
             }
             if (c.Notes.Count > 0) sheet.Cell(row, 11).SetValue(string.Join("; ", c.Notes));
+            sheet.Cell(row, 12).SetValue(c.PausedText);
         }
         sheet.Range(head + 1, 1, Math.Max(head + 1, row), headers.Length).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
-        foreach (var wrap in new[] { 4, 8, 11 }) sheet.Column(wrap).Style.Alignment.WrapText = true;
+        foreach (var wrap in new[] { 4, 8, 11, 12 }) sheet.Column(wrap).Style.Alignment.WrapText = true;
 
-        double[] widths = [10, 14, 22, 34, 7, 15, 15, 45, 9, 11, 40];
+        double[] widths = [10, 14, 22, 34, 7, 15, 15, 45, 9, 11, 40, 18];
         for (var i = 0; i < widths.Length; i++) sheet.Column(i + 1).Width = widths[i];
         sheet.SheetView.FreezeRows(head);
         if (group.Customers.Count > 0) sheet.Range(head, 1, row, headers.Length).SetAutoFilter();

@@ -337,10 +337,40 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_CustomerPackages_Dates", "\"EndDate\" >= \"StartDate\"");
 
-                            t.HasCheckConstraint("CK_CustomerPackages_PausedCount", "\"PausedCount\" BETWEEN 0 AND 3");
+                            t.HasCheckConstraint("CK_CustomerPackages_PausedCount", "\"PausedCount\" >= 0");
 
                             t.HasCheckConstraint("CK_CustomerPackages_Quantity", "\"Quantity\" BETWEEN 1 AND 20");
                         });
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.FestivePause", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .IsUnique();
+
+                    b.ToTable("FestivePauses", (string)null);
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.Customers.PackagePause", b =>
@@ -357,6 +387,9 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("FestivePauseId")
+                        .HasColumnType("integer");
 
                     b.Property<DateOnly>("NewEndDate")
                         .HasColumnType("date");
@@ -375,6 +408,8 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(300)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FestivePauseId");
 
                     b.HasIndex("PausedDate");
 
@@ -813,11 +848,18 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Fitzobit.Domain.Customers.PackagePause", b =>
                 {
+                    b.HasOne("Fitzobit.Domain.Customers.FestivePause", "FestivePause")
+                        .WithMany("Pauses")
+                        .HasForeignKey("FestivePauseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Fitzobit.Domain.Customers.CustomerPackage", "Package")
                         .WithMany("Pauses")
                         .HasForeignKey("PackageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("FestivePause");
 
                     b.Navigation("Package");
                 });
@@ -889,6 +931,11 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.Customers.CustomerPackage", b =>
+                {
+                    b.Navigation("Pauses");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Customers.FestivePause", b =>
                 {
                     b.Navigation("Pauses");
                 });

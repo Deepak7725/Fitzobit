@@ -135,9 +135,6 @@ public enum GeoMatchLevel
 /// </summary>
 public class CustomerPackage : IUserTracked
 {
-    /// <summary>Paused days that extend the end date; any further paused days are skipped without moving it.</summary>
-    public const int MaxPauses = 3;
-
     public const int MaxQuantity = 20;
 
     public int Id { get; set; }
@@ -160,10 +157,11 @@ public class CustomerPackage : IUserTracked
     /// <summary>First delivery day (never a Sunday).</summary>
     public DateOnly StartDate { get; set; }
 
-    /// <summary>Last delivery day: calculated in delivery days (or set by hand) and extended by the first pauses.</summary>
+    /// <summary>Last delivery day: calculated in delivery days (or set by hand) and extended by every paused day.</summary>
     public DateOnly EndDate { get; set; }
 
-    /// <summary>Paused days that extended the end date (0–<see cref="MaxPauses"/>); <see cref="Pauses"/> holds every paused day.</summary>
+    /// <summary>The customer's own paused days inside the package (each extended the end date; days paused for everyone are not
+    /// counted). <see cref="Pauses"/> holds every paused day.</summary>
     public int PausedCount { get; set; }
 
     /// <summary>
@@ -193,9 +191,9 @@ public class CustomerPackage : IUserTracked
 }
 
 /// <summary>
-/// One paused delivery day of a package. For the package's first <see cref="CustomerPackage.MaxPauses"/> paused days the meal is
-/// not lost: the end date moves to the next delivery day. Later paused days are skipped and the end date stays
-/// (<see cref="NewEndDate"/> = <see cref="PreviousEndDate"/>). Only packages whose frequency allows pausing are paused.
+/// One paused delivery day of a package. The meal is not lost: the end date moves to the next delivery day (no limit since
+/// 2026-11-05; before that only the first 3 own paused days did, which the UnlimitedPauses migration recalculated for current
+/// packages). Only packages whose frequency allows pausing are paused by the customer.
 /// </summary>
 public class PackagePause
 {
@@ -215,8 +213,28 @@ public class PackagePause
 
     public string? Reason { get; set; }
 
+    /// <summary>Set when the day was paused for everyone (festive or emergency closure): such pauses also extend the end date and are
+    /// not counted in the package's <see cref="CustomerPackage.PausedCount"/>.</summary>
+    public int? FestivePauseId { get; set; }
+    public FestivePause? FestivePause { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
+}
+
+/// <summary>
+/// A delivery day paused for everyone by an administrator (festive day or emergency): every package running that day, whatever its
+/// frequency, gets a pause that moves its end date (no meal lost, not one of the customer's own pauses). Packages saved later that
+/// run over the day get the pause too. Can be removed before the day, which moves the end dates back.
+/// </summary>
+public class FestivePause
+{
+    public int Id { get; set; }
+    public DateOnly Date { get; set; }
+    public string? Reason { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string? CreatedBy { get; set; }
+    public ICollection<PackagePause> Pauses { get; set; } = new List<PackagePause>();
 }
 
 /// <summary>A dated note about a customer (e.g. "Gate code 1234, call before delivery"). Writers edit/delete their own; admins any.</summary>

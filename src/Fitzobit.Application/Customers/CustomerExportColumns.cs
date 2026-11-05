@@ -40,6 +40,7 @@ public static class CustomerExportColumns
         new("notes", "Notes", ExportColumnKind.Text, 60, true, r => r.Notes),
         new("startDate", "Start Date", ExportColumnKind.Date, 13, false, r => r.StartDate),
         new("endDate", "End Date", ExportColumnKind.Date, 13, false, r => r.EndDate),
+        new("paused", "Paused Days", ExportColumnKind.Text, 26, true, r => r.PausedDays),
         new("group", "Group Number", ExportColumnKind.Integer, 14, false, r => r.GroupNumber),
         new("status", "Status", ExportColumnKind.Text, 11, true, r => r.Status),
         new("location", "Location", ExportColumnKind.Text, 22, true, r => LocationLabel(r.GeocodeStatus, r.GeocodeMatchLevel)),

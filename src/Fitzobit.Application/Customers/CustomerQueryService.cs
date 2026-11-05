@@ -40,17 +40,14 @@ public sealed class CustomerFilter
     /// <summary>located (any coordinates) | approximate (pincode area only) | missing (location unavailable)</summary>
     public string? Geo { get; set; }
 
-    /// <summary>customerId | customerName | address | pincode | deliveryTime | group | startDate | endDate | status | latitude | longitude | createdAt | updatedAt</summary>
+    /// <summary>customerId | customerName | address | pincode | deliveryTime | group | startDate | endDate | paused | status | latitude | longitude | createdAt | updatedAt</summary>
     public string? Sort { get; set; }
 
     public bool Desc { get; set; }
 }
 
 /// <summary>A package as the customers list shows it.</summary>
-/// <param name="PausedCount">Paused days that extended the end date.</param>
-/// <param name="PausedDays">Every paused day of the package.</param>
-public sealed record PackageSummaryDto(int Id, string Preference, string MealType, int Quantity, string Frequency, DateOnly StartDate, DateOnly EndDate,
-    int PausedCount, int PausedDays)
+public sealed record PackageSummaryDto(int Id, string Preference, string MealType, int Quantity, string Frequency, DateOnly StartDate, DateOnly EndDate)
 {
     /// <summary>"Veg Medium ×1 · Monthly (12 Oct 2026 – 10 Nov 2026)"</summary>
     public string Text => CustomerPackageService.Text(Preference, MealType, Quantity, Frequency, StartDate, EndDate);
@@ -62,6 +59,8 @@ public sealed record NoteSummaryDto(int Id, string Text, DateTime CreatedAt, str
 /// <param name="StartDate">The earliest start of the customer's packages.</param>
 /// <param name="EndDate">The latest end of the customer's packages.</param>
 /// <param name="Notes">All notes, newest first.</param>
+/// <param name="PausedDays">Paused days of the current packages (each day once, whichever packages it paused).</param>
+/// <param name="OwnPausedDays">Of those, days the customer paused; the rest (<see cref="FestivePausedDays"/>) were paused for everyone.</param>
 public sealed record CustomerListItemDto(
     int Id,
     string CustomerId,
@@ -85,7 +84,15 @@ public sealed record CustomerListItemDto(
     string GeocodeStatus,
     string? GeocodeMatchLevel,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    int PausedDays,
+    int OwnPausedDays)
+{
+    public int FestivePausedDays => PausedDays - OwnPausedDays;
+
+    /// <summary>"5 (2 own + 3 for everyone)"</summary>
+    public string PausedText => CustomerPauseService.PausedDaysText(OwnPausedDays, FestivePausedDays);
+}
 
 public sealed record AssignmentHistoryDto(DateTime ChangedAt, string? ChangedBy, int? PreviousGroupId, int? PreviousGroupNumber,
     int? NewGroupId, int? NewGroupNumber, string? Reason);
@@ -122,7 +129,6 @@ public sealed record CustomerPackageDto(
     DateOnly EndDate,
     int? DeliveryDaysLeft,
     int PausedCount,
-    int MaxPauses,
     IReadOnlyList<PackagePauseDto> Pauses,
     bool CanDelete,
     DateTime CreatedAt,
@@ -189,6 +195,9 @@ public sealed class CustomerRow
     public bool HasAnyPackage { get; init; }
     public DateOnly? StartDate { get; init; }
     public DateOnly? EndDate { get; init; }
+    /// <summary>Distinct paused days of the current packages, and how many of them the customer paused (the rest: for everyone).</summary>
+    public int PausedDays { get; init; }
+    public int OwnPausedDays { get; init; }
     public int StatusId { get; init; }
     public string Status { get; init; } = "";
     public string StatusCode { get; init; } = "";
@@ -224,6 +233,9 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             HasAnyPackage = c.Packages.Any(),
             StartDate = c.Packages.Where(p => p.ArchivedAt == null).Min(p => (DateOnly?)p.StartDate),
             EndDate = c.Packages.Where(p => p.ArchivedAt == null).Max(p => (DateOnly?)p.EndDate),
+            PausedDays = c.Packages.Where(p => p.ArchivedAt == null).SelectMany(p => p.Pauses).Select(x => x.PausedDate).Distinct().Count(),
+            OwnPausedDays = c.Packages.Where(p => p.ArchivedAt == null).SelectMany(p => p.Pauses).Where(x => x.FestivePauseId == null)
+                .Select(x => x.PausedDate).Distinct().Count(),
             StatusId = c.StatusId,
             Status = c.Status!.DisplayName,
             StatusCode = c.Status.Code,
@@ -297,6 +309,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
             "longitude" => EmptyLast(rows, r => r.Longitude, desc),
             "startdate" => EmptyLast(rows, r => r.StartDate, desc),
             "enddate" => EmptyLast(rows, r => r.EndDate, desc),
+            "paused" => desc ? rows.OrderByDescending(r => r.PausedDays) : rows.OrderBy(r => r.PausedDays),
             "status" => desc ? rows.OrderByDescending(r => r.Status) : rows.OrderBy(r => r.Status),
             "createdat" => desc ? rows.OrderByDescending(r => r.CreatedAt) : rows.OrderBy(r => r.CreatedAt),
             "updatedat" => desc ? rows.OrderByDescending(r => r.UpdatedAt) : rows.OrderBy(r => r.UpdatedAt),
@@ -326,7 +339,8 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         var notes = await NoteSummariesAsync(ids, ct);
         var items = pageRows.Select(r => new CustomerListItemDto(r.Id, r.CustomerId, r.CustomerName, r.PhoneNumber, r.AlternatePhoneNumber,
                 r.Address, r.Pincode, r.GoogleMapUrl, r.PreferredDeliveryTime, packages.GetValueOrDefault(r.Id) ?? [], notes.GetValueOrDefault(r.Id) ?? [], r.StartDate, r.EndDate, r.Status, r.StatusCode, r.GroupId,
-                r.GroupNumber, r.Latitude, r.Longitude, r.GeocodeStatus.ToString(), r.GeocodeMatchLevel?.ToString(), r.CreatedAt, r.UpdatedAt))
+                r.GroupNumber, r.Latitude, r.Longitude, r.GeocodeStatus.ToString(), r.GeocodeMatchLevel?.ToString(), r.CreatedAt, r.UpdatedAt, r.PausedDays,
+                r.OwnPausedDays))
             .ToList();
         return new PagedResult<CustomerListItemDto>(items, total, page, pageSize);
     }
@@ -345,7 +359,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
                 {
                     p.CustomerId,
                     Dto = new PackageSummaryDto(p.Id, p.Preference!.DisplayName, p.MealType!.DisplayName, p.Quantity, p.Frequency!.DisplayName,
-                        p.StartDate, p.EndDate, p.PausedCount, p.Pauses.Count())
+                        p.StartDate, p.EndDate)
                 })
                 .ToListAsync(ct);
             foreach (var p in packages)
@@ -417,7 +431,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
         CustomerPackageDto ToPackageDto(CustomerPackage p)
         {
             var pauses = p.Pauses.OrderBy(x => x.PausedDate)
-                .Select(x => new PackagePauseDto(x.PausedDate, x.PreviousEndDate, x.NewEndDate, x.ExtendedEndDate, x.Reason, x.CreatedAt,
+                .Select(x => new PackagePauseDto(x.PausedDate, x.PreviousEndDate, x.NewEndDate, x.ExtendedEndDate, x.FestivePauseId != null, x.Reason, x.CreatedAt,
                     x.CreatedBy)).ToList();
             // Delivery days still to come (today included), not counting days that are paused.
             var from = p.StartDate > today ? p.StartDate : today;
@@ -425,7 +439,7 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
                 : calendar.CountDeliveryDays(from, p.EndDate) - pauses.Count(x => x.PausedDate >= from && x.PausedDate <= p.EndDate);
             return new CustomerPackageDto(p.Id, p.PreferenceId, p.Preference!.DisplayName, p.MealTypeId, p.MealType!.DisplayName, p.Quantity,
                 p.FrequencyId, p.Frequency!.DisplayName, p.Frequency.NumericValue, p.Frequency.CanPause, p.StartDate, p.EndDate, daysLeft, p.PausedCount,
-                CustomerPackage.MaxPauses, pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy);
+                pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy);
         }
         var packageDtos = packages.Where(p => !p.IsPast).Select(ToPackageDto).ToList();
         var pastDtos = packages.Where(p => p.IsPast).OrderByDescending(p => p.EndDate).ThenByDescending(p => p.Id).Select(ToPackageDto).ToList();

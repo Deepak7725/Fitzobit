@@ -108,7 +108,7 @@ Rules enforced by the database as well as by the code:
 
 - `Customers.CustomerId` and `Users.UserName` are unique; `DictionaryEntries` is unique per type and code.
 - A customer has at most **one active delivery group** (filtered unique index `UX_CustomerDeliveryGroupAssignments_ActiveCustomer`).
-- Per package: `PausedCount` 0–3, `Quantity` 1–20, end date never before the start date; one pause per package and day
+- Per package: `PausedCount` ≥ 0, `Quantity` 1–20, end date never before the start date; one pause per package and day
   (unique index); coordinates are valid (check constraints).
 - Drop-down values cannot be deleted while a package or customer uses them (foreign keys with `RESTRICT`).
 - Concurrent saves of the same customer or package are detected through PostgreSQL's row version (`xmin`).
@@ -187,15 +187,19 @@ and `CustomerPauseService` (Application) use it. The browser never calculates da
 - A package is a number of delivery days, the frequency's value: **Monthly = 26**, **Weekly = 6**.
 - `CalculateEndDate(start, days)`: the start date is delivery day 1; the end date is the last delivery day.
   Weekly from Monday 12 Oct 2026 → Saturday 17 Oct; Monthly from Monday 5 Oct 2026 → Tuesday 3 Nov.
-- **Pausing** a delivery day pauses **every package running that day** (only today or later, never a Sunday, only for
-  customers whose status is **Active**). No meal is lost: each package's end date moves to the next delivery day
-  (`ExtendEndDateForPause`); a paused Saturday moves to Monday. At most **3 pauses per package**: if any running package has
-  used its 3, the day **cannot be paused** (the message names the package). Packages already paused that day are skipped (e.g.
-  a package added later). Each pause is recorded per package (`PackagePauses`) with the old and new end date and an optional
-  reason, all in one transaction; package row versions, the unique (package, date) index and the 0–3 check stop a repeated or
-  concurrent request from counting twice.
-- When a package's start date or frequency changes, its end date is recalculated; pauses inside the new period still count
-  and its `PausedCount` becomes the number of pauses inside it (moving the start after the old period starts at 0).
+- **Pausing** a delivery day pauses every running package whose frequency allows it (Settings → Dropdown values → Frequencies,
+  *Can pause*; only today or later, never a Sunday, only for **Active** or **Paused** customers). No meal is lost: **every**
+  paused day moves the package's end date to the next delivery day (`ExtendEndDateForPause`; a paused Saturday moves to Monday).
+  There is **no limit** (since 2026-11-05; before, only the first 3 did — the `UnlimitedPauses` migration recalculated current
+  packages). If the moved end date reaches an upcoming day *paused for everyone*, that day is paused too and the end date moves
+  again. Each pause is recorded per package (`PackagePauses`) with the old and new end date and an optional reason, all in one
+  transaction; package row versions and the unique (package, date) index stop a repeated or concurrent request from counting twice.
+- **Pause for everyone** (Admins, Customers page): festive or emergency days pause every running package of Active and Paused
+  customers, any frequency; end dates always move; removable before the day.
+- **Paused count**: own paused days and days paused for everyone, e.g. "4 (2 own + 2 for everyone)" — on the package card,
+  in the Customers table column *Paused Days* (sortable; export column `paused`) and on Daily Orders (page, Excel, PDF).
+- When a package's start date or frequency changes, its end date is recalculated; every pause inside the new period still
+  counts and its `PausedCount` becomes the number of own pauses inside it (moving the start after the old period starts at 0).
 - The delivery-day count of each frequency is read from the database (`DictionaryEntries.NumericValue`); 26 and 6 exist
   only as the initial seed values.
 - "Today" is the date in India (UTC+5:30).

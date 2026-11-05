@@ -279,7 +279,8 @@ public class CustomerExportTests
             i % 2 == 0 ? $"97{i:00000000}" : null, $"{i} Thiruvenkatasamy Road West, R.S. Puram, Coimbatore, Tamil Nadu 641002", "641002",
             i % 4 == 0 ? $"https://www.google.com/maps/place/Customer+{i}/@10.7867{i:000},79.1378{i:000},17z/data=!3m1!4b1" : null, new TimeOnly(7, 30),
             "With Egg Meal bowl ×1 · Monthly (12 Oct 2026 – 11 Nov 2026); Veg Oats ×2 · Weekly (13 Oct 2026 – 19 Oct 2026)",
-            i % 3 == 0 ? "08 Oct 2026, Test Admin: Gate code 1234, call before delivery" : null, new DateOnly(2026, 10, 12), new DateOnly(2026, 11, 11), "Active", i % 3 == 0 ? null : i % 5 + 1, GeocodeStatus.Located,
+            i % 3 == 0 ? "08 Oct 2026, Test Admin: Gate code 1234, call before delivery" : null, new DateOnly(2026, 10, 12), new DateOnly(2026, 11, 11),
+            i % 2 == 0 ? "5 (2 own + 3 for everyone)" : "0", "Active", i % 3 == 0 ? null : i % 5 + 1, GeocodeStatus.Located,
             GeoMatchLevel.Locality, 11.0123456m, 76.9512345m, new DateTime(2026, 10, 8, 4, 30, 0, DateTimeKind.Utc),
             new DateTime(2026, 10, 8, 5, 30, 0, DateTimeKind.Utc))).ToList();
         var info = new CustomerExportInfo("All customers", [new("Filters", "None (all customers)")], true, "Test Admin",

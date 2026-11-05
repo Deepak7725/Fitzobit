@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Columns3, Download, ExternalLink, Eye, FileSpreadsheet, FileText, FilterX, LocateFixed, Map as MapIcon, Search, Shuffle, Table2, UserPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarOff, Columns3, Download, ExternalLink, Eye, FileSpreadsheet, FileText, FilterX, LocateFixed, Map as MapIcon, Search, Shuffle, Table2, UserPlus, X } from 'lucide-react';
 import { api, type CustomerFilter, type CustomerListItem, type ExportFormat, type ExportScope, type NoteSummary, type PackageSummary } from '../api';
 import { useApi, useDebounced } from '../hooks';
 import { formatDate, formatDateTime, formatDay, formatTime } from '../format';
@@ -8,6 +8,8 @@ import { Badge, Card, EmptyState, ErrorPanel, Loading, PageHeader } from '../com
 import { Modal, useToast } from '../components/feedback';
 import CustomerDrawer, { statusTone } from '../components/CustomerDrawer';
 import ChangeGroupDialog from '../components/ChangeGroupDialog';
+import FestivePauseDialog from '../components/FestivePauseDialog';
+import { useAuth } from '../auth';
 import { GroupPill, LocationBadge, formatCoordinate } from '../components/groups';
 
 interface Column {
@@ -32,7 +34,6 @@ function PackagesCell({ packages }: { packages: PackageSummary[] }) {
           </span>
           <span className="item-sub nowrap">
             {formatDay(p.startDate)} – {formatDay(p.endDate)}
-            {p.pausedDays > 0 ? ` · ${p.pausedDays} paused` : ''}
           </span>
         </li>
       ))}
@@ -91,6 +92,17 @@ const COLUMNS: Column[] = [
   { key: 'notes', label: 'Notes', className: 'cell-notes', render: (c) => <NotesCell notes={c.notes} /> },
   { key: 'startDate', label: 'Start Date', sort: 'startDate', className: 'nowrap', render: (c) => (c.startDate ? formatDay(c.startDate) : notSet) },
   { key: 'endDate', label: 'End Date', sort: 'endDate', className: 'nowrap', render: (c) => (c.endDate ? formatDay(c.endDate) : '—') },
+  {
+    key: 'paused',
+    label: 'Paused Days',
+    sort: 'paused',
+    render: (c) =>
+      c.pausedDays === 0 ? (
+        <span className="muted">0</span>
+      ) : (
+        <span title="Own paused days + days paused for everyone (festive or emergency)">{c.pausedText}</span>
+      ),
+  },
   { key: 'group', label: 'Group Number', sort: 'group', className: 'nowrap', render: (c) => <GroupPill groupNumber={c.groupNumber} /> },
   { key: 'status', label: 'Status', sort: 'status', render: (c) => <Badge tone={statusTone(c.statusCode)}>{c.status}</Badge> },
   { key: 'location', label: 'Location', className: 'nowrap', render: (c) => <LocationBadge status={c.geocodeStatus} level={c.geocodeMatchLevel} /> },
@@ -172,6 +184,8 @@ export default function ViewDataPage() {
   const [hidden, setHidden] = useState<string[]>(() => readStored<string[]>(COLUMNS_KEY, DEFAULT_HIDDEN));
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
+  const { isAdmin } = useAuth();
+  const [festiveOpen, setFestiveOpen] = useState(false);
   const [changingGroup, setChangingGroup] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope | null>(null);
 
@@ -315,6 +329,11 @@ export default function ViewDataPage() {
             <Link to="/customers/new" className="btn btn-secondary">
               <UserPlus size={16} /> Add customer
             </Link>
+            {isAdmin && (
+              <button className="btn btn-secondary" onClick={() => setFestiveOpen(true)} title="Festive or emergency day: pause everyone's delivery">
+                <CalendarOff size={16} /> Pause for everyone
+              </button>
+            )}
             <button className="btn btn-primary" onClick={() => setExportScope(selected.size > 0 ? 'Selected' : 'Filtered')} disabled={!list.data}>
               <Download size={16} /> Export
             </button>
@@ -322,6 +341,7 @@ export default function ViewDataPage() {
         }
       />
 
+      {festiveOpen && <FestivePauseDialog onClose={() => setFestiveOpen(false)} onDone={() => list.reload()} />}
       {options.error && <ErrorPanel message={options.error} onRetry={options.reload} />}
 
       <Card className="data-card">

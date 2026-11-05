@@ -217,7 +217,7 @@ export default function AddCustomerPage() {
               </dl>
               <p className="footnote">
                 <Info size={12} /> Deliveries run Monday to Saturday. Sundays are not counted. Only packages whose frequency can pause (e.g. Monthly)
-                can pause days; the first 3 paused days move the end date to the next delivery day.
+                can pause days; every paused day moves the end date to the next delivery day.
               </p>
             </Card>
             <Card title={<><MapPinned size={18} /> Map location</>}>

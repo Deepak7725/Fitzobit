@@ -272,7 +272,7 @@ function EntryDialog({ type, singular, entry, onClose, onSaved }: {
         {isFrequency && (
           <label className="toggle toggle-field">
             <input type="checkbox" checked={canPause} onChange={(e) => setCanPause(e.target.checked)} />
-            Can pause (packages of this frequency may pause delivery days; the first 3 paused days extend the end date)
+            Can pause (packages of this frequency may pause delivery days; every paused day extends the end date)
           </label>
         )}
         {(!entry || !entry.isSystem) && (

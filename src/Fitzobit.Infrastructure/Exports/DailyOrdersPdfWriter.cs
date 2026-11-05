@@ -108,6 +108,12 @@ public sealed class DailyOrdersPdfWriter : IDailyOrdersExportWriter
                     if (i > 0) items.AddLineBreak();
                     items.AddText(c.Items[i].Text);
                 }
+                if (c.PausedDays > 0)
+                {
+                    var paused = row.Cells[2].AddParagraph($"Paused: {c.PausedText}");
+                    paused.Format.Font.Size = 7;
+                    paused.Format.Font.Color = Muted;
+                }
                 row.Cells[3].AddParagraph(c.Boxes.ToString()).Format.Alignment = ParagraphAlignment.Right;
                 var phone = row.Cells[4].AddParagraph(c.PhoneNumber);
                 if (c.AlternatePhoneNumber is not null)

@@ -170,7 +170,7 @@ public class CustomerPackageTests
         await using (var db = test.CreateContext())
         {
             var package = await db.CustomerPackages.SingleAsync(p => p.CustomerId == id);
-            package.PausedCount = CustomerPackage.MaxPauses + 1;
+            package.PausedCount = -1;
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }
     }

@@ -34,6 +34,14 @@ export function formatDay(day: string | null | undefined, withWeekday = false): 
   );
 }
 
+/** "5 (2 own + 3 for everyone)", "2 (own)", "3 (for everyone)" or "0" — same wording as the server (CustomerPauseService.PausedDaysText). */
+export function pausedDaysText(own: number, forEveryone: number): string {
+  if (own === 0 && forEveryone === 0) return '0';
+  if (forEveryone === 0) return `${own} (own)`;
+  if (own === 0) return `${forEveryone} (for everyone)`;
+  return `${own + forEveryone} (${own} own + ${forEveryone} for everyone)`;
+}
+
 /** Today's date in the browser as "yyyy-mm-dd" (for date inputs). */
 export function todayIso(): string {
   const now = new Date();

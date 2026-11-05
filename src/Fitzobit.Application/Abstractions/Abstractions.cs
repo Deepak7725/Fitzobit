@@ -17,6 +17,7 @@ public interface IFitzobitDbContext
     DbSet<Customer> Customers { get; }
     DbSet<CustomerPackage> CustomerPackages { get; }
     DbSet<PackagePause> PackagePauses { get; }
+    DbSet<FestivePause> FestivePauses { get; }
     DbSet<CustomerNote> CustomerNotes { get; }
     DbSet<DictionaryEntry> DictionaryEntries { get; }
     DbSet<DeliveryGroup> DeliveryGroups { get; }

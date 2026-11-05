@@ -12,7 +12,7 @@ import {
   type RenewalDue,
 } from '../api';
 import { useApi, useDebounced, useDictionaries } from '../hooks';
-import { formatDateTime, formatDay, formatTime, todayIso } from '../format';
+import { formatDateTime, formatDay, formatTime, pausedDaysText, todayIso } from '../format';
 import { Badge, ErrorPanel, Loading } from './ui';
 import { ConfirmDialog, Modal, useToast } from './feedback';
 import ChangeGroupDialog from './ChangeGroupDialog';
@@ -468,11 +468,16 @@ function PackageCard({ p, onEdit, onDeleted, past, renewal, onReminded }: {
         </dd>
         <dt>Paused</dt>
         <dd>
-          {p.pauses.length === 0 ? (p.canPause || past ? 'No paused days' : <span className="muted">{p.frequency} packages cannot pause</span>) : `${p.pauses.length} day(s)`}
+          {p.pauses.length === 0 ? (
+            p.canPause || past ? 'No paused days' : <span className="muted">{p.frequency} packages cannot pause</span>
+          ) : (
+            <strong>{pausedDaysText(p.pauses.filter((x) => !x.festive).length, p.pauses.filter((x) => x.festive).length)}</strong>
+          )}
           {p.pauses.length > 0 && (
             <div className="item-sub">
-              {p.pausedCount} of the first {p.maxPauses} extended the end date
-              {p.pauses.length > p.pausedCount ? '; later days were skipped without changing it' : ''}
+              {p.pauses.every((x) => x.extendedEndDate)
+                ? 'Each paused day moved the end date one delivery day'
+                : 'Each paused day moves the end date; some earlier days (old 3-day limit) did not'}
             </div>
           )}
           {p.pauses.length > 0 && (
@@ -481,7 +486,11 @@ function PackageCard({ p, onEdit, onDeleted, past, renewal, onReminded }: {
                 <li key={x.pausedDate}>
                   <strong>{formatDay(x.pausedDate, true)}</strong> ·{' '}
                   {x.extendedEndDate ? `end ${formatDay(x.previousEndDate)} → ${formatDay(x.newEndDate)}` : 'end date not changed'}
-                  {x.reason && <div className="item-sub">“{x.reason}”</div>}
+                  {x.festive ? (
+                    <div className="item-sub">Fitzobit closed{x.reason ? `: ${x.reason}` : ''} (paused for everyone)</div>
+                  ) : (
+                    x.reason && <div className="item-sub">“{x.reason}”</div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -841,10 +850,8 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
         values.frequencyId !== String(pkg.frequencyId) ? `Frequency: ${pkg.frequency} → ${name(dictionaries.data?.frequency, values.frequencyId) ?? '—'}` : null,
         typedEndDate != null
           ? `End date: ${formatDay(pkg.endDate)} → ${formatDay(typedEndDate)} (typed)`
-          : `End date: ${formatDay(pkg.endDate)} → ${schedule.preview ? formatDay(schedule.preview.endDate) : 'recalculated'}${pkg.pauses.length > 0 ? ` plus up to ${pkg.maxPauses} paused days inside the new period` : ''}`,
-        pkg.pauses.length > 0
-          ? `${pkg.pauses.length} paused day(s) are kept; the first ${pkg.maxPauses} inside the new period extend it.`
-          : null,
+          : `End date: ${formatDay(pkg.endDate)} → ${schedule.preview ? formatDay(schedule.preview.endDate) : 'recalculated'}${pkg.pauses.length > 0 ? ' plus the paused days inside the new period' : ''}`,
+        pkg.pauses.length > 0 ? `${pkg.pauses.length} paused day(s) are kept; each one inside the new period extends it.` : null,
         'The previous dates stay in the audit history.',
       ].filter((m): m is string => !!m)
     : [];
@@ -902,7 +909,7 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
           {pkg && (
             <p className="field-hint">
               {pkg.pauses.length > 0
-                ? `${pkg.pauses.length} paused day(s); ${pkg.pausedCount} of the first ${pkg.maxPauses} extended the end date. `
+                ? `Paused days: ${pausedDaysText(pkg.pauses.filter((x) => !x.festive).length, pkg.pauses.filter((x) => x.festive).length)}; each moves the end date. `
                 : ''}
               Pauses are added with “Pause a delivery”{pkg.canPause ? '' : ` (${pkg.frequency} packages cannot pause)`}.
             </p>
@@ -937,9 +944,9 @@ function endDateProblem(endDate: string, startDate: string): string | undefined 
 }
 
 /**
- * Pauses several delivery days at once, chosen on a calendar. Only packages whose frequency can pause (e.g. Monthly) are paused;
- * the first 3 paused days of a package move its end date, later ones do not. The server decides; the preview below the calendar
- * is the server's own answer for the chosen days.
+ * Pauses several delivery days at once, chosen on a calendar. Only packages whose frequency can pause are paused; every paused day
+ * moves the package's end date (no limit). The server decides; the preview below the calendar is the server's own answer for the
+ * chosen days.
  */
 function PauseDialog({ customer, onClose, onDone }: { customer: CustomerDetail; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
@@ -1017,7 +1024,7 @@ function PauseDialog({ customer, onClose, onDone }: { customer: CustomerDetail; 
       <form id="pause-form" onSubmit={submit}>
         <ul className="confirm-list">
           <li>Click the days to pause (click again to clear). Only packages whose frequency can pause are paused; others are still delivered.</li>
-          <li>The first {customer.packages[0]?.maxPauses ?? 3} paused days of a package move its end date to the next delivery day. Later paused days are skipped and the end date stays.</li>
+          <li>Every paused day moves the package's end date to the next delivery day, so no meal is lost. If the new end date is a day paused for everyone, that day is skipped too.</li>
           <li>Sundays are never delivery days. A pause cannot be undone.</li>
         </ul>
         <div className="pause-layout">
@@ -1041,11 +1048,16 @@ function PauseDialog({ customer, onClose, onDone }: { customer: CustomerDetail; 
                             {formatDay(d.date, true)} · {d.extendedEndDate ? 'end date moves 1 delivery day' : 'end date stays'}
                           </li>
                         ))}
+                        {p.festiveDays.map((d) => (
+                          <li key={`festive-${d}`}>
+                            {formatDay(d, true)} · paused for everyone, end date moves 1 more day
+                          </li>
+                        ))}
                       </ul>
                       <p className="item-sub">
                         Ends {formatDay(p.previousEndDate, true)}
-                        {p.newEndDate !== p.previousEndDate ? ` → ${formatDay(p.newEndDate, true)}` : ' (unchanged)'} · {p.extendingPausesLeft} extending
-                        pause(s) left
+                        {p.newEndDate !== p.previousEndDate ? ` → ${formatDay(p.newEndDate, true)}` : ' (unchanged)'} · {p.pausedCount} own paused day(s)
+                        in total
                       </p>
                     </div>
                   ))}

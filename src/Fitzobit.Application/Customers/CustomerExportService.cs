@@ -36,6 +36,8 @@ public sealed record CustomerExportRow(
     string? Notes,
     DateOnly? StartDate,
     DateOnly? EndDate,
+    /// <summary>Paused days of the current packages, e.g. "5 (2 own + 3 for everyone)".</summary>
+    string PausedDays,
     string Status,
     int? GroupNumber,
     GeocodeStatus GeocodeStatus,
@@ -169,7 +171,7 @@ public sealed class CustomerExportService(
         var data = found.Select(r => new CustomerExportRow(r.CustomerId, r.CustomerName, r.PhoneNumber, r.AlternatePhoneNumber, r.Address, r.Pincode,
                 r.GoogleMapUrl, r.PreferredDeliveryTime, packages.TryGetValue(r.Id, out var list) ? string.Join("; ", list.Select(p => p.Text)) : null,
                 notes.TryGetValue(r.Id, out var n) ? string.Join("; ", n.Select(x => NoteText(x, timeZone))) : null, r.StartDate,
-                r.EndDate, r.Status, r.GroupNumber, r.GeocodeStatus, r.GeocodeMatchLevel, r.Latitude, r.Longitude, r.CreatedAt, r.UpdatedAt))
+                r.EndDate, CustomerPauseService.PausedDaysText(r.OwnPausedDays, r.PausedDays - r.OwnPausedDays), r.Status, r.GroupNumber, r.GeocodeStatus, r.GeocodeMatchLevel, r.Latitude, r.Longitude, r.CreatedAt, r.UpdatedAt))
             .ToList();
 
         var described = request.Scope switch

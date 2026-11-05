@@ -221,6 +221,7 @@ function GroupSection({ group: g }: { group: GroupOrders }) {
                       {i.preference} {i.mealType} ×{i.quantity}
                     </div>
                   ))}
+                  {c.pausedDays > 0 && <div className="item-sub nowrap">Paused: {c.pausedText}</div>}
                 </td>
                 <td className="num strong">{c.boxes}</td>
                 <td className="nowrap">

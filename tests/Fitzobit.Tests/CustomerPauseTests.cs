@@ -10,8 +10,7 @@ namespace Fitzobit.Tests;
 
 /// <summary>
 /// Pausing delivery days: only packages whose frequency can pause (Monthly by default) are paused; several days can be paused in
-/// one request; each package's first 3 paused days move its end date to the next delivery day (never a Sunday), later paused days
-/// are skipped without moving it.
+/// one request; every paused day moves the package's end date to the next delivery day (never a Sunday) — no limit since 2026-11-05.
 /// </summary>
 public class CustomerPauseTests
 {
@@ -55,7 +54,8 @@ public class CustomerPauseTests
         var result = await PauseAsync(test, id, D(10, 17), "Going out of town");
 
         var paused = Assert.Single(result.Packages);
-        Assert.Equal((D(11, 10), D(11, 11), 1, 2), (paused.PreviousEndDate, paused.NewEndDate, paused.PausedCount, paused.ExtendingPausesLeft));
+        Assert.Equal((D(11, 10), D(11, 11), 1), (paused.PreviousEndDate, paused.NewEndDate, paused.PausedCount));
+        Assert.Empty(paused.FestiveDays);
         Assert.Equal([new PausedDayDto(D(10, 17), true)], paused.Days);
         Assert.Empty(result.NotPaused);
         var package = Assert.Single(await PackagesAsync(test, id));
@@ -66,11 +66,11 @@ public class CustomerPauseTests
         await using var db = test.CreateContext();
         Assert.Equal(AuditActions.CustomerPaused, (await db.AuditLogs.OrderBy(a => a.Id).LastAsync()).Action);
         var detail = (await test.Queries(db).GetDetailAsync(id)).Packages.Single();
-        Assert.Equal((26, 1, 3, true), (detail.DeliveryDaysLeft, detail.PausedCount, detail.MaxPauses, detail.CanPause)); // still 26 meals
+        Assert.Equal((26, 1, true), (detail.DeliveryDaysLeft, detail.PausedCount, detail.CanPause)); // still 26 meals
     }
 
     [Fact]
-    public async Task Several_days_in_one_go_only_the_first_three_extend_the_end_date()
+    public async Task Several_days_in_one_go_all_extend_the_end_date_without_a_limit()
     {
         using var test = new TestDatabase();
         var id = await MonthlyCustomerAsync(test);
@@ -80,16 +80,17 @@ public class CustomerPauseTests
 
         Assert.Equal([D(10, 13), D(10, 14), D(10, 15), D(10, 16), D(10, 17)], result.Dates);
         var paused = Assert.Single(result.Packages);
-        Assert.Equal([true, true, true, false, false], paused.Days.Select(d => d.ExtendedEndDate));
-        Assert.Equal((D(11, 10), D(11, 13), 3, 0), (paused.PreviousEndDate, paused.NewEndDate, paused.PausedCount, paused.ExtendingPausesLeft));
+        Assert.All(paused.Days, d => Assert.True(d.ExtendedEndDate));
+        // Tue 10 Nov + 5 delivery days (Wed 11, Thu 12, Fri 13, Sat 14, Sunday skipped) = Mon 16 Nov.
+        Assert.Equal((D(11, 10), D(11, 16), 5), (paused.PreviousEndDate, paused.NewEndDate, paused.PausedCount));
 
-        // Counted per package over all time: a later pause no longer moves the end date.
+        // A sixth paused day still moves it.
         var later = Assert.Single((await PauseAsync(test, id, D(10, 20))).Packages);
-        Assert.Equal((D(11, 13), D(11, 13), false), (later.PreviousEndDate, later.NewEndDate, later.Days.Single().ExtendedEndDate));
+        Assert.Equal((D(11, 16), D(11, 17), true), (later.PreviousEndDate, later.NewEndDate, later.Days.Single().ExtendedEndDate));
 
         var package = Assert.Single(await PackagesAsync(test, id));
-        Assert.Equal((D(11, 13), 3, 6), (package.EndDate, package.PausedCount, package.Pauses.Count));
-        Assert.Equal([true, true, true, false, false, false], package.Pauses.OrderBy(p => p.PausedDate).Select(p => p.ExtendedEndDate));
+        Assert.Equal((D(11, 17), 6, 6), (package.EndDate, package.PausedCount, package.Pauses.Count));
+        Assert.All(package.Pauses, p => Assert.True(p.ExtendedEndDate));
     }
 
     [Fact]
@@ -219,11 +220,11 @@ public class CustomerPauseTests
     }
 
     [Fact]
-    public async Task A_start_date_change_keeps_the_first_three_pauses_and_a_renewal_starts_at_zero()
+    public async Task A_start_date_change_keeps_every_pause_and_a_renewal_starts_at_zero()
     {
         using var test = new TestDatabase();
         var id = await MonthlyCustomerAsync(test);
-        await PauseAsync(test, id, [D(10, 13), D(10, 14), D(10, 15), D(10, 16), D(10, 17)]); // end Tue 10 → Fri 13 Nov
+        await PauseAsync(test, id, [D(10, 13), D(10, 14), D(10, 15), D(10, 16), D(10, 17)]); // end Tue 10 → Mon 16 Nov
         var packageId = (await PackagesAsync(test, id)).Single().Id;
 
         await using var db = test.CreateContext();
@@ -234,9 +235,9 @@ public class CustomerPauseTests
             ExpectedUpdatedAt = updatedAt, ConfirmScheduleChange = true
         };
 
-        // From Tue 13 Oct, 26 delivery days end Wed 11 Nov; the first three pauses (13, 14, 15) move it to Sat 14 Nov.
+        // From Tue 13 Oct, 26 delivery days end Wed 11 Nov; all five pauses (13–17 Oct) move it to Tue 17 Nov.
         var moved = await test.Packages(db).UpdateAsync(packageId, Move(D(10, 13), p.UpdatedAt));
-        Assert.Equal((D(11, 14), 3), (moved.EndDate, moved.PausedCount));
+        Assert.Equal((D(11, 17), 5), (moved.EndDate, moved.PausedCount));
 
         var current = await db.CustomerPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
         var renewed = await test.Packages(db).UpdateAsync(packageId, Move(D(10, 26), current.UpdatedAt));
