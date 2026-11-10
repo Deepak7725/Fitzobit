@@ -134,7 +134,9 @@ public sealed record CustomerPackageDto(
     DateTime CreatedAt,
     string? CreatedBy,
     DateTime UpdatedAt,
-    string? UpdatedBy);
+    string? UpdatedBy,
+    /// <summary>The package price in rupees; only sent to Manager accounts (null for everyone else).</summary>
+    decimal? Price = null);
 
 public sealed record CustomerDetailDto(
     int Id,
@@ -439,7 +441,8 @@ public sealed partial class CustomerQueryService(IFitzobitDbContext db, IDeliver
                 : calendar.CountDeliveryDays(from, p.EndDate) - pauses.Count(x => x.PausedDate >= from && x.PausedDate <= p.EndDate);
             return new CustomerPackageDto(p.Id, p.PreferenceId, p.Preference!.DisplayName, p.MealTypeId, p.MealType!.DisplayName, p.Quantity,
                 p.FrequencyId, p.Frequency!.DisplayName, p.Frequency.NumericValue, p.Frequency.CanPause, p.StartDate, p.EndDate, daysLeft, p.PausedCount,
-                pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy);
+                pauses, CustomerPackageService.CanDelete(p, today), p.CreatedAt, p.CreatedBy, p.UpdatedAt, p.UpdatedBy,
+                Money.MoneyService.CanSeeMoney(currentUser) ? p.Price : null);
         }
         var packageDtos = packages.Where(p => !p.IsPast).Select(ToPackageDto).ToList();
         var pastDtos = packages.Where(p => p.IsPast).OrderByDescending(p => p.EndDate).ThenByDescending(p => p.Id).Select(ToPackageDto).ToList();

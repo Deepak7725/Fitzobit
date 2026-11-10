@@ -8,6 +8,7 @@ import DeliveryMapPage from './pages/DeliveryMapPage';
 import SettingsPage from './pages/SettingsPage';
 import DailyOrdersPage from './pages/DailyOrdersPage';
 import NotFoundPage from './pages/NotFoundPage';
+import MoneyPage from './pages/MoneyPage';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="groups" element={<DeliveryGroupsPage />} />
         <Route path="orders" element={<DailyOrdersPage />} />
         <Route path="map" element={<DeliveryMapPage />} />
+        <Route path="money" element={<MoneyPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

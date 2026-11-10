@@ -22,7 +22,7 @@ public sealed class TestUser : ICurrentUser
 {
     public string UserName => "test-user";
     public string DisplayName => "Test User";
-    public string Role => "Manager";
+    public string Role { get; set; } = "Manager";
 }
 
 public sealed class FixedClock(DateTime utcNow) : IClock
@@ -72,7 +72,9 @@ public sealed class TestDatabase : IDisposable
     public CustomerCommandService Commands(FitzobitDbContext db) =>
         new(db, new LocationClassificationService(LocationOptions), Dictionaries(db), Packages(db), new SequenceCustomerIdGenerator(db), Queue, AuditFor(db));
 
-    public CustomerPackageService Packages(FitzobitDbContext db) => new(db, Dictionaries(db), Schedule(db), AuditFor(db), Clock, Automation(db));
+    public CustomerPackageService Packages(FitzobitDbContext db) => new(db, Dictionaries(db), Schedule(db), AuditFor(db), Clock, Automation(db), User);
+
+    public Application.Money.MoneyService Money(FitzobitDbContext db) => new(db, new DeliveryCalendarService(), AuditFor(db), User, Clock);
 
     public CustomerAutomationService Automation(FitzobitDbContext db) => new(db, new DeliveryCalendarService(), AuditFor(db), Clock);
 

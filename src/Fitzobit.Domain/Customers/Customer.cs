@@ -170,6 +170,10 @@ public class CustomerPackage : IUserTracked
     /// </summary>
     public DateTime? ArchivedAt { get; set; }
 
+    /// <summary>What the customer pays for the whole package (all boxes, all delivery days), in rupees: taken from the price list when
+    /// the package is added (box price × quantity), changeable by a Manager (e.g. a discount). Null = no price known.</summary>
+    public decimal? Price { get; set; }
+
     public bool IsPast => ArchivedAt != null;
 
     /// <summary>When someone last pressed "Send reminder" for this package's renewal, and who (display name).</summary>

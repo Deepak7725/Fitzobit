@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<RenewalReminderService>();
         services.AddScoped<FestivePauseService>();
         services.AddScoped<DailyOrders.DailyOrdersService>();
+        services.AddScoped<Money.MoneyService>();
         services.AddScoped<CustomerPackageService>();
         services.AddScoped<CustomerNoteService>();
         services.AddScoped<CustomerExportService>();

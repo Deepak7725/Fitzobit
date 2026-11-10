@@ -14,6 +14,9 @@ public static class Policies
 
     /// <summary>Users, administrative settings, audit log.</summary>
     public const string Admin = "Admin";
+
+    /// <summary>The Money page (prices, costs, profit): Manager accounts only, not Admins (owner, 2026-11-10).</summary>
+    public const string Money = "Money";
 }
 
 public static class FitzobitClaims

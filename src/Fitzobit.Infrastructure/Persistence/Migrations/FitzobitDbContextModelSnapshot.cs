@@ -293,6 +293,10 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.Property<int>("PreferenceId")
                         .HasColumnType("integer");
 
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -338,6 +342,8 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_CustomerPackages_Dates", "\"EndDate\" >= \"StartDate\"");
 
                             t.HasCheckConstraint("CK_CustomerPackages_PausedCount", "\"PausedCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_CustomerPackages_Price", "\"Price\" IS NULL OR \"Price\" >= 0");
 
                             t.HasCheckConstraint("CK_CustomerPackages_Quantity", "\"Quantity\" BETWEEN 1 AND 20");
                         });
@@ -686,6 +692,56 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.ToTable("WhatsAppMessages");
                 });
 
+            modelBuilder.Entity("Fitzobit.Domain.Money.PackagePrice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("FrequencyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MealTypeId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PreferenceId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FrequencyId");
+
+                    b.HasIndex("PreferenceId");
+
+                    b.HasIndex("MealTypeId", "PreferenceId", "FrequencyId")
+                        .IsUnique();
+
+                    b.ToTable("PackagePrices", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PackagePrices_Price", "\"Price\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("Fitzobit.Domain.Settings.AppSetting", b =>
                 {
                     b.Property<string>("Key")
@@ -919,6 +975,33 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DeliveryGroupId")
                         .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Money.PackagePrice", b =>
+                {
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Frequency")
+                        .WithMany()
+                        .HasForeignKey("FrequencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "MealType")
+                        .WithMany()
+                        .HasForeignKey("MealTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Preference")
+                        .WithMany()
+                        .HasForeignKey("PreferenceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Frequency");
+
+                    b.Navigation("MealType");
+
+                    b.Navigation("Preference");
                 });
 
             modelBuilder.Entity("Fitzobit.Domain.Customers.Customer", b =>

@@ -30,6 +30,7 @@ public class FitzobitDbContext(DbContextOptions<FitzobitDbContext> options, ICur
     public DbSet<Domain.Users.AppUser> Users => Set<Domain.Users.AppUser>();
     public DbSet<Domain.Messaging.WhatsAppMessage> WhatsAppMessages => Set<Domain.Messaging.WhatsAppMessage>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<Domain.Money.PackagePrice> PackagePrices => Set<Domain.Money.PackagePrice>();
 
     /// <summary>ASP.NET Core data-protection keys (sign-in and CSRF cookies), so sessions survive restarts on hosts without a lasting disk.</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();

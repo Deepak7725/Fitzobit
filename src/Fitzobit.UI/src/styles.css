@@ -647,3 +647,19 @@ a.hbar-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 1p
   .facts { grid-template-columns: 1fr; gap: 2px; }
   .facts dd { margin-bottom: 8px; }
 }
+
+/* Money page (Manager accounts only) */
+.money-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.money-prices td, .money-prices th { padding: 6px 10px; vertical-align: middle; }
+.money-input { width: 92px; text-align: right; }
+.money-changed { border-color: var(--primary); background: var(--surface-2); }
+.money-breakdown { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.money-breakdown-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; margin-top: 8px; }
+.money-bar { display: flex; height: 12px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+.money-bar-row { display: flex; justify-content: space-between; font-size: 12.5px; }
+.money-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.mb-delivery { background: #378add; }
+.mb-helper { background: #7f77dd; }
+.mb-profit { background: #1d9e75; }
+.mb-food { background: #ba7517; }
+.money-table { margin-top: 16px; }

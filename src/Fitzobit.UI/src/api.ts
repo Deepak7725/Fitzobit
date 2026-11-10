@@ -327,6 +327,8 @@ export interface CustomerPackage {
   createdBy: string | null;
   updatedAt: string;
   updatedBy: string | null;
+  /** Package price in rupees; only sent to Manager accounts. */
+  price?: number | null;
 }
 
 export interface CustomerNote {
@@ -435,6 +437,69 @@ export interface UpdatePackageRequest extends SavePackageRequest {
   confirmScheduleChange: boolean;
   /** The end date as typed; the same as the calculated one keeps the calculation. */
   endDate: string | null;
+  /** Package price in rupees; only Manager accounts send it (ignored for others). */
+  price?: number | null;
+}
+
+/** Money page (Manager accounts only). */
+export interface ProfitTarget {
+  frequencyId: number;
+  frequency: string;
+  deliveryDays: number | null;
+  percent: number;
+}
+
+export interface MoneySettings {
+  deliveryCostPerBox: number;
+  helperCostPerBox: number;
+  targets: ProfitTarget[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface PriceOption {
+  id: number;
+  name: string;
+  deliveryDays: number | null;
+}
+
+export interface PriceCell {
+  mealTypeId: number;
+  preferenceId: number;
+  frequencyId: number;
+  /** Package price for one box per delivery day. */
+  price: number;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+export interface PriceList {
+  mealTypes: PriceOption[];
+  preferences: PriceOption[];
+  frequencies: PriceOption[];
+  prices: PriceCell[];
+}
+
+export interface MoneyLine {
+  label: string;
+  boxes: number;
+  earned: number;
+  deliveryCost: number;
+  helperCost: number;
+  targetProfit: number;
+  /** Left for food after delivery, helper and target profit (negative = price too low). */
+  foodBudget: number;
+}
+
+export interface Earnings {
+  from: string;
+  to: string;
+  deliveryDays: number;
+  totals: MoneyLine;
+  byBox: MoneyLine[];
+  byGroup: MoneyLine[];
+  /** Boxes of packages without a price (left out of the money figures). */
+  unpricedBoxes: number;
 }
 
 export interface CreateCustomerResult {
@@ -886,6 +951,14 @@ export const api = {
   /** One day's orders; null = the next delivery day. */
   dailyOrders: (date: string | null, signal?: AbortSignal) => get<DailyOrders>(`/api/daily-orders${query({ date })}`, signal),
   exportDailyOrders: (date: string, format: ExportFormat) => download('/api/daily-orders/export', { date, format }),
+
+  moneySettings: (signal?: AbortSignal) => get<MoneySettings>('/api/money/settings', signal),
+  saveMoneySettings: (request: { deliveryCostPerBox: number; helperCostPerBox: number; targets: { frequencyId: number; percent: number }[] }) =>
+    send<MoneySettings>('PUT', '/api/money/settings', request),
+  priceList: (signal?: AbortSignal) => get<PriceList>('/api/money/prices', signal),
+  savePriceList: (prices: { mealTypeId: number; preferenceId: number; frequencyId: number; price: number | null }[]) =>
+    send<PriceList>('PUT', '/api/money/prices', { prices }),
+  earnings: (from: string, to: string, signal?: AbortSignal) => get<Earnings>(`/api/money/earnings${query({ from, to })}`, signal),
 
   dictionaries: (signal?: AbortSignal) => get<DictionaryOptions>('/api/dictionaries', signal),
   dictionaryEntries: (type: DictionaryType, signal?: AbortSignal) => get<DictionaryEntry[]>(`/api/dictionaries/${type}`, signal),

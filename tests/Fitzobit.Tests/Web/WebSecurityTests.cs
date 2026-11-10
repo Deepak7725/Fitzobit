@@ -133,6 +133,23 @@ public class WebSecurityTests
     }
 
     [Fact]
+    public async Task Only_manager_accounts_reach_the_money_page()
+    {
+        using var host = new WebTestHost();
+        var admin = await host.SetupAdminAsync();
+        var manager = await CreateManagerAsync(host, admin);
+
+        foreach (var url in new[] { "/api/money/settings", "/api/money/prices", "/api/money/earnings" })
+        {
+            HttpAssert.Status(HttpStatusCode.OK, await manager.GetAsync(url));
+            HttpAssert.Status(HttpStatusCode.Forbidden, await admin.GetAsync(url));
+        }
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync("/api/money/prices", new { prices = Array.Empty<object>() }));
+        HttpAssert.Status(HttpStatusCode.OK, await manager.PutAsync("/api/money/prices", new { prices = Array.Empty<object>() }));
+        HttpAssert.Status(HttpStatusCode.Unauthorized, await host.NewClient().GetAsync("/api/money/settings"));
+    }
+
+    [Fact]
     public async Task Managers_operate_but_cannot_reach_administration()
     {
         using var host = new WebTestHost();

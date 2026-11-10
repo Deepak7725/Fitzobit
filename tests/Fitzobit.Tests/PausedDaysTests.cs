@@ -96,13 +96,13 @@ public class PausedDaysTests
     [Fact]
     public async Task The_migration_lets_earlier_paused_days_beyond_three_move_the_end_date_of_current_packages()
     {
-        using var test = new TestDatabase(migrate: false);
+        using var test = new TestDatabase();
         int current, past;
         await using (var db = test.CreateContext())
         {
-            await db.GetService<IMigrator>().MigrateAsync("20261104164420_FestivePauses");
             current = (await test.Commands(db).CreateAsync(test.NewCustomer(frequency: "MONTHLY"))).Id;     // Mon 12 Oct – Tue 10 Nov
             past = (await test.Commands(db).CreateAsync(test.NewCustomer("Bala", "9000000002"))).Id;         // weekly Mon 12 – Sat 17 Oct
+            await db.GetService<IMigrator>().MigrateAsync("20261104164420_FestivePauses"); // back to the schema before UnlimitedPauses
             // As the old rule stored them: 13–15 Oct moved the end to Fri 13 Nov, 16 and 17 Oct did not.
             await db.Database.ExecuteSqlAsync($"""
                 UPDATE "CustomerPackages" SET "EndDate" = '2026-11-13', "PausedCount" = 3 WHERE "CustomerId" = {current};

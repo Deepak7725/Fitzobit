@@ -36,6 +36,9 @@ public sealed class UpdatePackageRequest : SavePackageRequest
     /// end date, keeps the calculation.
     /// </summary>
     public DateOnly? EndDate { get; set; }
+
+    /// <summary>The package price in rupees (all boxes, all deliveries), from a Manager only; ignored for other users. Null = no price.</summary>
+    public decimal? Price { get; set; }
 }
 
 public sealed record PackageSavedDto(int Id, DateOnly StartDate, DateOnly EndDate, int PausedCount);
@@ -47,7 +50,7 @@ public sealed record PackageSavedDto(int Id, DateOnly StartDate, DateOnly EndDat
 /// first delivery day.
 /// </summary>
 public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryService dictionaries, DeliveryScheduleService schedule, IAuditLogger audit, IClock clock,
-    CustomerAutomationService automation)
+    CustomerAutomationService automation, ICurrentUser currentUser)
 {
     internal sealed record ValidatedPackage(DictionaryEntry Preference, DictionaryEntry MealType, int Quantity, DictionaryEntry Frequency, DateOnly StartDate,
         DateOnly EndDate);
@@ -59,6 +62,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
 
         var v = await ValidateAsync(request, null, ct);
         var package = NewPackage(v);
+        package.Price = await Money.MoneyService.ListPriceAsync(db, v.MealType.Id, v.Preference.Id, v.Frequency.Id, v.Quantity, ct);
         customer.Packages.Add(package);
         await ApplyFestiveDaysAsync(package, ct);
         audit.RecordChange(AuditActions.CustomerPackageAdded, nameof(Customer), customer.CustomerId,
@@ -106,6 +110,19 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
             endDate = typed;
         }
 
+        // Price (Managers only see and set it): a Manager's value is taken as sent; for anyone else a different box, quantity or
+        // frequency takes the list price, otherwise the price stays.
+        var price = package.Price;
+        if (Money.MoneyService.CanSeeMoney(currentUser))
+        {
+            if (request.Price is < 0 or > Domain.Money.PackagePrice.MaxPrice * CustomerPackage.MaxQuantity)
+                throw new BusinessRuleException($"The price must be between ₹0 and ₹{Domain.Money.PackagePrice.MaxPrice * CustomerPackage.MaxQuantity:N0}.");
+            price = request.Price is { } p ? Math.Round(p, 2) : null;
+        }
+        else if (v.MealType.Id != package.MealTypeId || v.Preference.Id != package.PreferenceId || v.Frequency.Id != package.FrequencyId
+                 || v.Quantity != package.Quantity)
+            price = await Money.MoneyService.ListPriceAsync(db, v.MealType.Id, v.Preference.Id, v.Frequency.Id, v.Quantity, ct);
+
         var datesChanged = scheduleChanged || endDate != package.EndDate;
         var changes = new ChangeSet();
         changes.Track("Preference", package.Preference!.DisplayName, v.Preference.DisplayName);
@@ -115,6 +132,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         changes.Track("StartDate", package.StartDate, v.StartDate);
         changes.Track("EndDate", package.EndDate, endDate);
         changes.Track("PausedCount", package.PausedCount, pausedCount);
+        if (price != package.Price) changes.Track("Price", "(not shown)", "changed"); // amounts stay off the audit log (Admins read it)
         if (!changes.HasChanges) return new PackageSavedDto(package.Id, package.StartDate, package.EndDate, package.PausedCount);
 
         package.PreferenceId = v.Preference.Id;
@@ -124,6 +142,7 @@ public sealed class CustomerPackageService(IFitzobitDbContext db, DictionaryServ
         package.StartDate = v.StartDate;
         package.EndDate = endDate;
         package.PausedCount = pausedCount;
+        package.Price = price;
         if (scheduleChanged && !typedEndDate) await ApplyFestiveDaysAsync(package, ct); // a typed end date is kept as typed
         audit.RecordChange(AuditActions.CustomerPackageUpdated, nameof(Customer), package.Customer!.CustomerId,
             $"Package updated: {package.Customer.CustomerId} {Describe(v with { EndDate = endDate })} ({string.Join(", ", changes.New.Keys)})",

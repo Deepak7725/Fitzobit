@@ -161,6 +161,9 @@ public sealed class DictionaryService(IFitzobitDbContext db, IAuditLogger audit)
             throw new BusinessRuleException($"\"{entry.DisplayName}\" is used by {Users(entry.DictionaryType, used)} and cannot be deleted. Deactivate it instead.");
         if (entry.IsActive) await EnsureCanDeactivateAsync(entry, ct);
 
+        // Its prices on the Money page go with it (a price list entry is not a use by a customer).
+        db.PackagePrices.RemoveRange(await db.PackagePrices
+            .Where(p => p.MealTypeId == entry.Id || p.PreferenceId == entry.Id || p.FrequencyId == entry.Id).ToListAsync(ct));
         db.DictionaryEntries.Remove(entry);
         audit.RecordChange(AuditActions.DictionaryEntryDeleted, nameof(DictionaryEntry), $"{entry.DictionaryType}:{entry.Code}",
             $"{Title(entry.DictionaryType)} deleted: {entry.DisplayName}", Snapshot(entry), new Dictionary<string, object?>());

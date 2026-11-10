@@ -96,7 +96,12 @@ public sealed partial class CustomerCommandService(
         var customer = new Customer();
         Apply(customer, v);
         customer.CustomerId = await idGenerator.NextAsync(ct);
-        foreach (var p in validatedPackages) customer.Packages.Add(CustomerPackageService.NewPackage(p));
+        foreach (var p in validatedPackages)
+        {
+            var package = CustomerPackageService.NewPackage(p);
+            package.Price = await Money.MoneyService.ListPriceAsync(db, p.MealType.Id, p.Preference.Id, p.Frequency.Id, p.Quantity, ct);
+            customer.Packages.Add(package);
+        }
         foreach (var p in customer.Packages) await packages.ApplyFestiveDaysAsync(p, ct); // days paused for everyone
         if (note is not null) customer.Notes.Add(new CustomerNote { Text = note });
 

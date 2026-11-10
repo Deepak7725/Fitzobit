@@ -5,6 +5,8 @@ import { api, UNAUTHORIZED_EVENT, type AuthState, type SignedInUser } from './ap
 interface AuthContextValue {
   user: SignedInUser;
   isAdmin: boolean;
+  /** Manager accounts see the Money page and package prices (Admins do not). */
+  isManager: boolean;
   signOut: () => Promise<void>;
   /** Re-reads the session (and a CSRF token bound to it) after the password changed. */
   refresh: () => Promise<void>;
@@ -80,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return <LoginScreen expired={expired} onDone={async () => { setExpired(false); await refresh(); }} />;
 
   return (
-    <AuthContext.Provider value={{ user: state.user, isAdmin: state.user.role === 'Admin', signOut, refresh }}>
+    <AuthContext.Provider value={{ user: state.user, isAdmin: state.user.role === 'Admin', isManager: state.user.role === 'Manager', signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );

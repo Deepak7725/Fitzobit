@@ -58,6 +58,7 @@ internal sealed class CustomerPackageConfiguration : IEntityTypeConfiguration<Cu
             t.HasCheckConstraint("CK_CustomerPackages_Quantity", $"\"Quantity\" BETWEEN 1 AND {CustomerPackage.MaxQuantity}");
             t.HasCheckConstraint("CK_CustomerPackages_PausedCount", "\"PausedCount\" >= 0");
             t.HasCheckConstraint("CK_CustomerPackages_Dates", "\"EndDate\" >= \"StartDate\"");
+            t.HasCheckConstraint("CK_CustomerPackages_Price", "\"Price\" IS NULL OR \"Price\" >= 0");
         });
         b.Property(p => p.Version).IsRowVersion();
         b.Property(p => p.CreatedBy).HasMaxLength(100);
@@ -138,6 +139,20 @@ internal sealed class DeliveryGroupConfiguration : IEntityTypeConfiguration<Deli
         b.HasIndex(g => g.GroupNumber).IsUnique();
         b.HasIndex(g => g.Status);
         b.ToTable(t => t.HasCheckConstraint("CK_DeliveryGroups_GroupNumber", "\"GroupNumber\" > 0"));
+    }
+}
+
+internal sealed class PackagePriceConfiguration : IEntityTypeConfiguration<Domain.Money.PackagePrice>
+{
+    public void Configure(EntityTypeBuilder<Domain.Money.PackagePrice> b)
+    {
+        b.ToTable("PackagePrices", t => t.HasCheckConstraint("CK_PackagePrices_Price", "\"Price\" > 0"));
+        b.Property(p => p.CreatedBy).HasMaxLength(100);
+        b.Property(p => p.UpdatedBy).HasMaxLength(100);
+        b.HasIndex(p => new { p.MealTypeId, p.PreferenceId, p.FrequencyId }).IsUnique();
+        b.HasOne(p => p.MealType).WithMany().HasForeignKey(p => p.MealTypeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(p => p.Preference).WithMany().HasForeignKey(p => p.PreferenceId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(p => p.Frequency).WithMany().HasForeignKey(p => p.FrequencyId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

@@ -27,6 +27,7 @@ public interface IFitzobitDbContext
     DbSet<Domain.Users.AppUser> Users { get; }
     DbSet<Domain.Messaging.WhatsAppMessage> WhatsAppMessages { get; }
     DbSet<AppSetting> AppSettings { get; }
+    DbSet<Domain.Money.PackagePrice> PackagePrices { get; }
 
     /// <summary>For transactions only (BeginTransactionAsync).</summary>
     DatabaseFacade Database { get; }

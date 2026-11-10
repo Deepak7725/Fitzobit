@@ -6,6 +6,8 @@ export interface ApiState<T> {
   error: string | null;
   loading: boolean;
   reload: () => void;
+  /** Replaces the data, e.g. with what a save returned (no reload needed). */
+  setData: (data: T) => void;
 }
 
 /**
@@ -39,7 +41,7 @@ export function useApi<T>(load: (signal: AbortSignal) => Promise<T>, deps: Depen
   }, [version, ...deps]);
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
-  return { data, error, loading, reload };
+  return { data, error, loading, reload, setData };
 }
 
 /** Debounces a fast-changing value (e.g. a search box). */

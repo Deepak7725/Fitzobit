@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { ClipboardList, LayoutDashboard, Map as MapIcon, Menu, Settings, Table2, UserPlus, UsersRound, X } from 'lucide-react';
+import { ClipboardList, IndianRupee, LayoutDashboard, Map as MapIcon, Menu, Settings, Table2, UserPlus, UsersRound, X } from 'lucide-react';
 import { useAuth } from '../auth';
 import UserMenu from './UserMenu';
 
@@ -11,13 +11,15 @@ export const navItems = [
   { to: '/orders', label: 'Daily Orders', icon: ClipboardList },
   { to: '/map', label: 'Delivery Classification', icon: MapIcon },
   { to: '/groups', label: 'Delivery Groups', icon: UsersRound },
+  { to: '/money', label: 'Money', icon: IndianRupee, managerOnly: true },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, isManager } = useAuth();
+  const visibleItems = navItems.filter((n) => !n.managerOnly || isManager);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -37,7 +39,7 @@ export default function Layout() {
           </button>
         </div>
         <nav className="nav">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {visibleItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <Icon size={18} strokeWidth={2} />
               <span>{label}</span>

@@ -12,6 +12,7 @@ import {
   type RenewalDue,
 } from '../api';
 import { useApi, useDebounced, useDictionaries } from '../hooks';
+import { useAuth } from '../auth';
 import { formatDateTime, formatDay, formatTime, pausedDaysText, todayIso } from '../format';
 import { Badge, ErrorPanel, Loading } from './ui';
 import { ConfirmDialog, Modal, useToast } from './feedback';
@@ -466,6 +467,15 @@ function PackageCard({ p, onEdit, onDeleted, past, renewal, onReminded }: {
             {p.frequencyDeliveryDays != null && ` · ${p.frequencyDeliveryDays} delivery days per package`}
           </div>
         </dd>
+        {p.price != null && (
+          <>
+            <dt>Price</dt>
+            <dd>
+              ₹{p.price.toLocaleString('en-IN')}
+              {p.frequencyDeliveryDays ? <div className="item-sub">₹{(p.price / p.frequencyDeliveryDays / p.quantity).toLocaleString('en-IN', { maximumFractionDigits: 1 })} per box per delivery</div> : null}
+            </dd>
+          </>
+        )}
         <dt>Paused</dt>
         <dd>
           {p.pauses.length === 0 ? (
@@ -806,8 +816,26 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
   const calculatedEndDate = pkg ? (scheduleChanged ? (schedule.preview?.endDate ?? '') : pkg.endDate) : '';
   const endDate = typedEndDate ?? calculatedEndDate;
   const endDateError = !pkg || typedEndDate == null ? undefined : endDateProblem(typedEndDate, values.startDate);
+  // Price: Manager accounts only. Follows the price list (box price × quantity) until the Manager types a price.
+  const { isManager } = useAuth();
+  const priceList = useApi((signal) => (isManager && pkg ? api.priceList(signal) : Promise.resolve(null)), [isManager, !!pkg]);
+  const listPriceFor = (v: PackageFormValues): number | null => {
+    const cell = priceList.data?.prices.find(
+      (c) => String(c.mealTypeId) === v.mealTypeId && String(c.preferenceId) === v.preferenceId && String(c.frequencyId) === v.frequencyId,
+    );
+    return cell ? cell.price * (Number(v.quantity) || 1) : null;
+  };
+  const listPrice = listPriceFor(values);
+  const [priceText, setPriceText] = useState(pkg?.price != null ? String(pkg.price) : '');
+  const [priceTyped, setPriceTyped] = useState(false);
+  const priceError = priceText.trim() && !(Number(priceText) >= 0) ? 'Enter a price of ₹0 or more, or leave it empty.' : undefined;
   const changeValues = (next: PackageFormValues) => {
     if (next.startDate !== values.startDate || next.frequencyId !== values.frequencyId) setTypedEndDate(null);
+    const boxChanged = ['mealTypeId', 'preferenceId', 'frequencyId', 'quantity'].some((k) => next[k as keyof PackageFormValues] !== values[k as keyof PackageFormValues]);
+    if (isManager && pkg && boxChanged && !priceTyped) {
+      const list = listPriceFor(next);
+      setPriceText(list != null ? String(list) : '');
+    }
     setValues(next);
   };
 
@@ -821,6 +849,7 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
           expectedUpdatedAt: pkg.updatedAt,
           confirmScheduleChange,
           endDate: typedEndDate,
+          ...(isManager ? { price: priceText.trim() ? Number(priceText) : null } : {}),
         });
         toast(`Package saved. It ends ${formatDay(saved.endDate, true)}.`);
       } else {
@@ -838,7 +867,7 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    if (Object.keys(validatePackage(values)).length > 0 || endDateError || schedule.error || (scheduleChanged && schedule.loading)) return;
+    if (Object.keys(validatePackage(values)).length > 0 || endDateError || priceError || schedule.error || (scheduleChanged && schedule.loading)) return;
     if (pkg && scheduleChanged) setConfirming(true);
     else void save(false);
   };
@@ -906,6 +935,40 @@ function PackageDialog({ customer, pkg, onClose, onSaved }: { customer: Customer
                 : undefined
             }
           />
+          {pkg && isManager && (
+            <label className="field">
+              Price (₹, all boxes and deliveries of this package)
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step={1}
+                value={priceText}
+                placeholder="No price"
+                onChange={(e) => {
+                  setPriceText(e.target.value);
+                  setPriceTyped(true);
+                }}
+              />
+              {touched && priceError && <span className="field-error">{priceError}</span>}
+              <span className="field-hint">
+                {listPrice != null ? `Price list: ₹${listPrice.toLocaleString('en-IN')}. ` : 'This box has no price in the price list. '}
+                Change it for a discount. Only Manager accounts see prices.{' '}
+                {listPrice != null && String(listPrice) !== priceText && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      setPriceText(String(listPrice));
+                      setPriceTyped(false);
+                    }}
+                  >
+                    Use list price
+                  </button>
+                )}
+              </span>
+            </label>
+          )}
           {pkg && (
             <p className="field-hint">
               {pkg.pauses.length > 0
