@@ -146,6 +146,8 @@ public class WebSecurityTests
         }
         HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync("/api/money/prices", new { prices = Array.Empty<object>() }));
         HttpAssert.Status(HttpStatusCode.OK, await manager.PutAsync("/api/money/prices", new { prices = Array.Empty<object>() }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PostAsync("/api/money/prices/fill-missing", new { }));
+        HttpAssert.Status(HttpStatusCode.OK, await manager.PostAsync("/api/money/prices/fill-missing", new { }));
         HttpAssert.Status(HttpStatusCode.Unauthorized, await host.NewClient().GetAsync("/api/money/settings"));
     }
 

@@ -8,13 +8,14 @@
 
 ---
 
-## 00. STATUS (2026-11-10, evening)
+## 00. STATUS (2026-11-10, late evening)
 
-Parts 10-12 were committed and pushed by the owner (`f6ac924`) and are live; the Manager account exists on the live site. **Part 13 "Money
-cost lines + history + day total" is built and NOT committed** (see §1 Part 13; commit message in §0.1). Nothing else open; ask the owner.
-Notes: call recordings were summarised by the owner (faster-whisper "medium" installed, model cached under the user's .cache/huggingface,
-stopped before finishing). Live Money page showed Detox drink weekly (Rs 333/6 = Rs 55.5/meal) with a negative food budget once Rs 55 of
-costs are taken: told the owner.
+Parts 10-13 are pushed and live (`458fdaa`). **"Fill missing prices" is built and NOT committed** (commit message in §0.1).
+**After the owner pushes and Render deploys, Claude runs it on the live site** (the owner asked Claude to fill the prices himself): in the
+owner's Chrome, signed in as `manager_fitzobit`, open https://fitzobit.onrender.com/money and click "Fill missing prices from the price
+list" in the yellow box of the earnings card (or `POST /api/money/prices/fill-missing`). Expected: 32 packages filled, 0 still missing
+(checked 2026-11-10: all 32 unpriced packages are finished - 30 one-day Trail packages, Rs 189 per box set by the owner for every Trail box,
+and 2 Meal bowl weekly at Rs 894). Then confirm the yellow box is gone for This month. Not browser-checked locally (endpoint covered by tests).
 
 ---
 
@@ -30,13 +31,13 @@ costs are taken: told the owner.
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
 | Migrations | 12: Part 13 added `20261110105543_MoneyCostHistory` (MoneyCostVersions/Lines/ProfitTargets; copies the Money.* AppSettings into a first version valid from 2000-01-01, then deletes them; Down restores them). Part 12 added `20261110095915_MoneyModule` (PackagePrices, CustomerPackages.Price, seeded prices/costs/targets). Part 11 added `20261105060851_UnlimitedPauses` (check `PausedCount >= 0` + one-time recalculation of current packages, see §1 Part 11). Part 10 added `20261104164420_FestivePauses`. Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **232 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 code warnings (a full `--no-incremental` rebuild shows 2 analyzer warnings EF1002 in `DatabaseMigrationTests.cs` helpers that predate Part 10/11). UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **233 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 code warnings (a full `--no-incremental` rebuild shows 2 analyzer warnings EF1002 in `DatabaseMigrationTests.cs` helpers that predate Part 10/11). UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
-1. **Commit + push Part 13** (Parts 10-12 are pushed). Suggested message: `Money page: own cost lines, cost history and day totals` (Manager adds
-   cost lines per box such as Plate; costs and profit targets saved with a Valid from date and each day uses the costs valid then; breakdown
-   shows every line and the day total of a box; unpriced packages listed by customer; migration MoneyCostHistory).
+1. **Commit + push "Fill missing prices"**. Suggested message: `Money page: fill missing package prices from the price list` (Manager-only
+   POST api/money/prices/fill-missing and a button in the unpriced warning; gives every package without a price, current and finished, its
+   list price x quantity; packages with a price are never changed). Then Claude runs it on the live site (see §00).
 2. **12 pm wake-up = GitHub Actions** `.github/workflows/wake-up.yml` (11:40, 11:55, 12:05 IST) — pushed and tested green by the owner
    (2026-10-27). cron-job.org did NOT work (Render answered its servers with a large page and never started the app); owner told to
    disable that job.
@@ -214,7 +215,14 @@ Decisions asked from the owner (do not change without asking):
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
 
-### Part 13 (done 2026-11-10, not yet committed) — Money: own cost lines, cost history, day total
+### Part 14 (2026-11-10, not yet committed) - Fill missing package prices
+Finished (past) packages cannot be edited, so packages sold before their box had a price (Trail, Meal bowl) could never get one. Owner set
+Trail = Rs 189 for every box and asked to fill them. `MoneyService.FillMissingPricesAsync` (`POST api/money/prices/fill-missing`, Manager
+only): every package with `Price` null, current and past, gets list price x quantity where the list has a price; returns filled / still
+missing; one audit line without amounts. UI: button "Fill missing prices from the price list" + confirm in the unpriced warning. Tests:
+`MoneyTests.Missing_prices_are_filled...`, web test (Admin 403). 233 tests passing.
+
+### Part 13 (done 2026-11-10, pushed `458fdaa`) — Money: own cost lines, cost history, day total
 Owner's answers (option questions, 2026-11-10):
 - **Cost lines** the Manager adds by name ("Plate" Rs 10): always **per box, for all boxes**; Delivery + petrol and Helper stay as their own
   fixed fields; every line is shown separately in the breakdown, the day total, the earnings cards and tables (`EarningsDto.CostNames`,

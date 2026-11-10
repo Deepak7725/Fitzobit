@@ -989,6 +989,8 @@ export const api = {
   priceList: (signal?: AbortSignal) => get<PriceList>('/api/money/prices', signal),
   savePriceList: (prices: { mealTypeId: number; preferenceId: number; frequencyId: number; price: number | null }[]) =>
     send<PriceList>('PUT', '/api/money/prices', { prices }),
+  /** Gives every package without a price (current and past) its list price × quantity. */
+  fillMissingPrices: () => send<{ filled: number; stillMissing: number }>('POST', '/api/money/prices/fill-missing'),
   earnings: (from: string, to: string, signal?: AbortSignal) => get<Earnings>(`/api/money/earnings${query({ from, to })}`, signal),
 
   dictionaries: (signal?: AbortSignal) => get<DictionaryOptions>('/api/dictionaries', signal),

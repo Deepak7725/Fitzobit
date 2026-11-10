@@ -6,7 +6,7 @@ import { useAuth } from '../auth';
 import { useApi } from '../hooks';
 import { formatDay, todayIso } from '../format';
 import { Card, ErrorPanel, Loading, PageHeader, StatCard } from '../components/ui';
-import { useToast } from '../components/feedback';
+import { ConfirmDialog, useToast } from '../components/feedback';
 
 /** "₹1,234" (whole rupees) or "₹103.8" with one decimal. */
 export function rupees(value: number, decimals = 0): string {
@@ -95,7 +95,7 @@ function MoneyContent() {
             }}
           />
           <PriceListCard list={prices.data} settings={settings.data} refreshKey={saved} onSaved={(p) => { prices.setData(p); setSaved((n) => n + 1); }} />
-          <EarningsCard refreshKey={saved} />
+          <EarningsCard refreshKey={saved} onChanged={() => setSaved((n) => n + 1)} />
         </>
       )}
     </>
@@ -504,7 +504,7 @@ function DayTotal({ boxKey, label, refreshKey }: { boxKey: string; label: string
   );
 }
 
-function EarningsCard({ refreshKey }: { refreshKey: number }) {
+function EarningsCard({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   const [period, setPeriod] = useState<Period>('today');
   const [from, to] = periodRange(period);
   const earnings = useApi((signal) => api.earnings(from, to, signal), [from, to, refreshKey]);
@@ -526,12 +526,31 @@ function EarningsCard({ refreshKey }: { refreshKey: number }) {
     >
       {earnings.error && <ErrorPanel message={earnings.error} onRetry={earnings.reload} />}
       {!e && !earnings.error && <Loading label="Adding up…" />}
-      {e && <EarningsBody e={e} />}
+      {e && <EarningsBody e={e} onFilled={() => { earnings.reload(); onChanged(); }} />}
     </Card>
   );
 }
 
-function EarningsBody({ e }: { e: Earnings }) {
+function EarningsBody({ e, onFilled }: { e: Earnings; onFilled: () => void }) {
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const fill = async () => {
+    setFilling(true);
+    try {
+      const result = await api.fillMissingPrices();
+      toast(
+        `${result.filled} package(s) got their list price.` +
+          (result.stillMissing > 0 ? ` ${result.stillMissing} still have no price: their box has no price in the price list.` : ''),
+      );
+      setConfirming(false);
+      onFilled();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'The prices could not be filled.', 'error');
+    } finally {
+      setFilling(false);
+    }
+  };
   return (
     <>
       <div className="stat-grid">
@@ -565,7 +584,23 @@ function EarningsBody({ e }: { e: Earnings }) {
               </li>
             ))}
           </ul>
+          <button className="btn btn-secondary btn-sm" onClick={() => setConfirming(true)}>
+            Fill missing prices from the price list
+          </button>
         </div>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title="Fill missing package prices?"
+          messages={[
+            'Every package without a price, current and finished, gets its box price from the price list × its quantity.',
+            'Packages that already have a price are not changed. Boxes with no price in the price list stay without a price.',
+          ]}
+          confirmLabel="Fill prices"
+          busy={filling}
+          onConfirm={() => void fill()}
+          onCancel={() => setConfirming(false)}
+        />
       )}
       <MoneyTable title="By box" lines={e.byBox} costNames={e.costNames} />
       <MoneyTable title="By delivery group" lines={e.byGroup} costNames={e.costNames} />

@@ -23,6 +23,10 @@ public sealed class MoneyController(MoneyService money) : ControllerBase
     [HttpPut("prices")]
     public Task<PriceListDto> SavePrices(SavePriceListRequest request, CancellationToken ct) => money.SavePriceListAsync(request, ct);
 
+    /// <summary>Gives every package without a price (current and past) its list price × quantity.</summary>
+    [HttpPost("prices/fill-missing")]
+    public Task<FillPricesResultDto> FillMissingPrices(CancellationToken ct) => money.FillMissingPricesAsync(ct);
+
     /// <summary>Earnings from <paramref name="from"/> to <paramref name="to"/> (both included); without dates, today.</summary>
     [HttpGet("earnings")]
     public Task<EarningsDto> Earnings([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) => money.EarningsAsync(from, to, ct);

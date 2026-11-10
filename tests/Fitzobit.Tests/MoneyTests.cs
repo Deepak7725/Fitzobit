@@ -250,6 +250,30 @@ public class MoneyTests
     }
 
     [Fact]
+    public async Task Missing_prices_are_filled_from_the_price_list_for_current_and_past_packages()
+    {
+        using var test = new TestDatabase();
+        await using var db = test.CreateContext();
+        var request = test.NewCustomer();
+        request.Packages[0] = test.NewPackage("WEEKLY", D(10, 12), "MEAL-BOWL", quantity: 2);   // no Meal bowl price yet
+        request.Packages.Add(test.NewPackage("MONTHLY", D(10, 12), "MEAL-BOWL", "WITH-EGG"));    // stays without a price
+        request.Packages.Add(test.NewPackage("WEEKLY", D(10, 12)));                               // Medium Veg weekly: ₹999
+        var id = (await test.Commands(db).CreateAsync(request)).Id;
+        await db.CustomerPackages.Where(p => p.CustomerId == id).ExecuteUpdateAsync(u => u.SetProperty(p => p.ArchivedAt, DateTime.UtcNow)); // finished
+        await db.CustomerPackages.Where(p => p.CustomerId == id && p.Price != null).ExecuteUpdateAsync(u => u.SetProperty(p => p.Price, 900m)); // a discount stays
+
+        var (bowl, veg, weekly) = (Id(test, DictionaryType.MealType, "MEAL-BOWL"), Id(test, DictionaryType.Preference, "VEG"), Id(test, DictionaryType.Frequency, "WEEKLY"));
+        await using var fresh = test.CreateContext(); // the rows changed behind the first context's back
+        await test.Money(fresh).SavePriceListAsync(new SavePriceListRequest
+            { Prices = [new SavePriceCell { MealTypeId = bowl, PreferenceId = veg, FrequencyId = weekly, Price = 894 }] });
+
+        Assert.Equal(new FillPricesResultDto(1, 1), await test.Money(fresh).FillMissingPricesAsync());
+        var prices = await fresh.CustomerPackages.AsNoTracking().Where(p => p.CustomerId == id).OrderBy(p => p.Id).Select(p => p.Price).ToListAsync();
+        Assert.Equal([1788m, null, 900m], prices);
+        Assert.Equal(new FillPricesResultDto(0, 1), await test.Money(fresh).FillMissingPricesAsync()); // nothing left to fill
+    }
+
+    [Fact]
     public void The_split_matches_the_owner_s_example()
     {
         // Medium Veg monthly ₹2,699 ÷ 26 = ₹103.81 per meal; 30 % profit ₹31.14; ₹30 delivery + ₹25 helper leave ₹17.67 for food.

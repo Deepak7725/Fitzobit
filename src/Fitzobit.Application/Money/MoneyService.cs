@@ -85,6 +85,10 @@ public sealed class SavePriceListRequest
 public sealed record MoneyLineDto(string Label, int Boxes, decimal Earned, decimal DeliveryCost, decimal HelperCost, IReadOnlyDictionary<string, decimal> OtherCosts,
     decimal TargetProfit, decimal FoodBudget, string? Key = null);
 
+/// <param name="Filled">Packages that got their list price × quantity.</param>
+/// <param name="StillMissing">Packages still without a price because their box has no price in the price list.</param>
+public sealed record FillPricesResultDto(int Filled, int StillMissing);
+
 /// <summary>A package without a price that delivered boxes in the period (so the Manager can give it one).</summary>
 public sealed record UnpricedPackageDto(int CustomerId, string CustomerCode, string CustomerName, string Package, int Boxes);
 
@@ -231,6 +235,31 @@ public sealed class MoneyService(IFitzobitDbContext db, IDeliveryCalendarService
             await db.SaveChangesAsync(ct);
         }
         return await GetPriceListAsync(ct);
+    }
+
+    /// <summary>
+    /// Gives every package without a price — current and past (finished packages cannot be edited) — its list price × quantity, where
+    /// the price list has a price for its box. Packages that already have a price are never changed (owner, 2026-11-10).
+    /// </summary>
+    public async Task<FillPricesResultDto> FillMissingPricesAsync(CancellationToken ct = default)
+    {
+        var prices = await db.PackagePrices.AsNoTracking()
+            .ToDictionaryAsync(p => (p.MealTypeId, p.PreferenceId, p.FrequencyId), p => p.Price, ct);
+        var packages = await db.CustomerPackages.Where(p => p.Price == null).ToListAsync(ct);
+        var filled = 0;
+        foreach (var p in packages)
+        {
+            if (!prices.TryGetValue((p.MealTypeId, p.PreferenceId, p.FrequencyId), out var price)) continue;
+            p.Price = price * p.Quantity;
+            filled++;
+        }
+        if (filled > 0)
+        {
+            audit.Record(AuditActions.SettingsUpdated, "Settings", "PriceList",
+                $"Missing package prices filled from the price list on the Money page ({filled} package(s))", null);
+            await db.SaveChangesAsync(ct);
+        }
+        return new FillPricesResultDto(filled, packages.Count - filled);
     }
 
     /// <summary>The list price of a package: box price × quantity, or null when the box is not in the price list.</summary>
