@@ -9,7 +9,6 @@ using Fitzobit.Domain.Deliveries;
 using Fitzobit.Domain.DeliveryGroups;
 using Fitzobit.Domain.Dictionaries;
 using Fitzobit.Domain.Money;
-using Fitzobit.Domain.Settings;
 using Fitzobit.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,10 +18,18 @@ namespace Fitzobit.Application.Money;
 /// <param name="DeliveryDays">Deliveries in a package of this frequency (26, 6, 1 …).</param>
 public sealed record ProfitTargetDto(int FrequencyId, string Frequency, int? DeliveryDays, decimal Percent);
 
+/// <summary>A cost line added by the Manager, per box delivered, for all boxes (e.g. "Plate" ₹10).</summary>
+public sealed record CostLineDto(string Name, decimal AmountPerBox);
+
+/// <summary>One saved set of costs and targets: valid from <see cref="EffectiveFrom"/> until the next one starts.</summary>
+public sealed record CostVersionDto(DateOnly EffectiveFrom, decimal CostsPerBox, DateTime UpdatedAt, string? UpdatedBy);
+
+/// <param name="EffectiveFrom">The day these values started to apply (the version valid on the requested day).</param>
 /// <param name="DeliveryCostPerBox">Delivery person + petrol, per box delivered.</param>
 /// <param name="HelperCostPerBox">Helper, per box delivered.</param>
-public sealed record MoneySettingsDto(decimal DeliveryCostPerBox, decimal HelperCostPerBox, IReadOnlyList<ProfitTargetDto> Targets, DateTime? UpdatedAt,
-    string? UpdatedBy);
+/// <param name="History">Every saved version, newest first.</param>
+public sealed record MoneySettingsDto(DateOnly EffectiveFrom, decimal DeliveryCostPerBox, decimal HelperCostPerBox, IReadOnlyList<CostLineDto> Lines,
+    IReadOnlyList<ProfitTargetDto> Targets, DateTime? UpdatedAt, string? UpdatedBy, IReadOnlyList<CostVersionDto> History);
 
 public sealed class SaveProfitTarget
 {
@@ -30,10 +37,19 @@ public sealed class SaveProfitTarget
     public decimal Percent { get; set; }
 }
 
+public sealed class SaveCostLine
+{
+    public string? Name { get; set; }
+    public decimal AmountPerBox { get; set; }
+}
+
 public sealed class SaveMoneySettingsRequest
 {
+    /// <summary>First day the values apply (default today). Days before keep the earlier values; a later saved version still wins from its own day.</summary>
+    public DateOnly? EffectiveFrom { get; set; }
     public decimal DeliveryCostPerBox { get; set; }
     public decimal HelperCostPerBox { get; set; }
+    public List<SaveCostLine> Lines { get; set; } = [];
     public List<SaveProfitTarget> Targets { get; set; } = [];
 }
 
@@ -63,15 +79,24 @@ public sealed class SavePriceListRequest
 }
 
 /// <summary>Money for a set of delivered boxes. Earned = package price ÷ deliveries per package, for each delivery made.</summary>
-/// <param name="FoodBudget">What is left for food after delivery, helper and the target profit (negative = price too low).</param>
-public sealed record MoneyLineDto(string Label, int Boxes, decimal Earned, decimal DeliveryCost, decimal HelperCost, decimal TargetProfit, decimal FoodBudget);
+/// <param name="OtherCosts">The Manager's added cost lines by name (amount for these boxes).</param>
+/// <param name="FoodBudget">What is left for food after all costs and the target profit (negative = price too low).</param>
+/// <param name="Key">By box: "mealTypeId-preferenceId"; by group: the group number (0 = no group).</param>
+public sealed record MoneyLineDto(string Label, int Boxes, decimal Earned, decimal DeliveryCost, decimal HelperCost, IReadOnlyDictionary<string, decimal> OtherCosts,
+    decimal TargetProfit, decimal FoodBudget, string? Key = null);
 
+/// <summary>A package without a price that delivered boxes in the period (so the Manager can give it one).</summary>
+public sealed record UnpricedPackageDto(int CustomerId, string CustomerCode, string CustomerName, string Package, int Boxes);
+
+/// <param name="CostNames">Names of the added cost lines that occur in the period, in display order.</param>
 /// <param name="UnpricedBoxes">Boxes delivered by packages without a price; they are left out of the money figures.</param>
-public sealed record EarningsDto(DateOnly From, DateOnly To, int DeliveryDays, MoneyLineDto Totals, IReadOnlyList<MoneyLineDto> ByBox,
-    IReadOnlyList<MoneyLineDto> ByGroup, int UnpricedBoxes);
+/// <param name="UnpricedPackages">Those packages, by customer.</param>
+public sealed record EarningsDto(DateOnly From, DateOnly To, int DeliveryDays, IReadOnlyList<string> CostNames, MoneyLineDto Totals,
+    IReadOnlyList<MoneyLineDto> ByBox, IReadOnlyList<MoneyLineDto> ByGroup, int UnpricedBoxes, IReadOnlyList<UnpricedPackageDto> UnpricedPackages);
 
 /// <summary>
-/// Money (owner's design with Siva, 2026-11-10; Manager accounts only): costs per box (delivery person + petrol ₹30, helper ₹25), a target
+/// Money (owner's design with Siva, 2026-11-10; Manager accounts only): costs per box (delivery person + petrol ₹30, helper ₹25, plus
+/// cost lines the Manager adds by name, e.g. Plate ₹10; all kept with history by "valid from" date), a target
 /// profit per frequency as a percentage of the selling price (Monthly 30 %, Weekly 40 %, Trail 40 %), the price list per meal type ×
 /// preference × frequency, and what the packages earn per day, week or month. Each package keeps the price it was sold at
 /// (<see cref="CustomerPackage.Price"/>). The food budget is not entered: it is what remains of each meal's price after the costs and
@@ -79,49 +104,87 @@ public sealed record EarningsDto(DateOnly From, DateOnly To, int DeliveryDays, M
 /// </summary>
 public sealed class MoneyService(IFitzobitDbContext db, IDeliveryCalendarService calendar, IAuditLogger audit, ICurrentUser currentUser, IClock clock)
 {
-    public const string DeliveryCostKey = "Money.DeliveryCostPerBox";
-    public const string HelperCostKey = "Money.HelperCostPerBox";
-    public const string ProfitTargetKeyPrefix = "Money.ProfitTarget.";
     public const decimal DefaultDeliveryCost = 30m;
     public const decimal DefaultHelperCost = 25m;
     public const decimal DefaultProfitTarget = 30m;
-    public const decimal MaxCostPerBox = 10_000m;
-    public const decimal MaxProfitTarget = 95m;
+    public const int MaxCostLines = 30;
+    public const decimal MaxCostPerBox = MoneyCostVersion.MaxCostPerBox;
+    public const decimal MaxProfitTarget = MoneyProfitTarget.MaxPercent;
     public const int MaxEarningsDays = 400;
 
     /// <summary>Whether the signed-in user may see money (prices, costs, profit): Manager accounts only (owner, 2026-11-10).</summary>
     public static bool CanSeeMoney(ICurrentUser user) => user.Role == Roles.Manager;
 
-    public async Task<MoneySettingsDto> GetSettingsAsync(CancellationToken ct = default)
+    /// <summary>The costs and targets valid on <paramref name="date"/> (default today), plus the list of saved versions.</summary>
+    public async Task<MoneySettingsDto> GetSettingsAsync(DateOnly? date = null, CancellationToken ct = default)
     {
-        var values = await db.AppSettings.AsNoTracking().Where(s => s.Key.StartsWith("Money.")).ToListAsync(ct);
+        var day = date ?? DeliveryScheduleService.Today(clock);
+        var versions = await LoadVersionsAsync(ct);
         var frequencies = await db.DictionaryEntries.AsNoTracking().Where(e => e.DictionaryType == DictionaryType.Frequency && e.IsActive)
             .OrderBy(e => e.SortOrder).ThenBy(e => e.DisplayName).ToListAsync(ct);
-        decimal Value(string key, decimal fallback) =>
-            decimal.TryParse(values.FirstOrDefault(v => v.Key == key)?.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : fallback;
-        var latest = values.OrderByDescending(v => v.UpdatedAt).FirstOrDefault();
-        return new MoneySettingsDto(Value(DeliveryCostKey, DefaultDeliveryCost), Value(HelperCostKey, DefaultHelperCost),
-            frequencies.Select(f => new ProfitTargetDto(f.Id, f.DisplayName, f.NumericValue, Value(ProfitTargetKeyPrefix + f.Code, DefaultProfitTarget))).ToList(),
-            latest?.UpdatedAt, latest?.UpdatedBy);
+        var v = VersionOn(versions, day);
+        var history = versions.OrderByDescending(x => x.EffectiveFrom)
+            .Select(x => new CostVersionDto(x.EffectiveFrom, x.DeliveryCostPerBox + x.HelperCostPerBox + x.Lines.Sum(l => l.AmountPerBox), x.UpdatedAt, x.UpdatedBy))
+            .ToList();
+        return new MoneySettingsDto(v?.EffectiveFrom ?? day, v?.DeliveryCostPerBox ?? DefaultDeliveryCost, v?.HelperCostPerBox ?? DefaultHelperCost,
+            v?.Lines.OrderBy(l => l.SortOrder).Select(l => new CostLineDto(l.Name, l.AmountPerBox)).ToList() ?? [],
+            frequencies.Select(f => new ProfitTargetDto(f.Id, f.DisplayName, f.NumericValue, TargetOf(v, f.Id))).ToList(),
+            v?.UpdatedAt, v?.UpdatedBy, history);
     }
 
+    /// <summary>
+    /// Saves costs and targets valid from <see cref="SaveMoneySettingsRequest.EffectiveFrom"/> (default today): a new version, or the
+    /// version of that same day replaced. Days before keep their values (owner, 2026-11-10: keep cost history).
+    /// </summary>
     public async Task<MoneySettingsDto> SaveSettingsAsync(SaveMoneySettingsRequest request, CancellationToken ct = default)
     {
+        var from = request.EffectiveFrom ?? DeliveryScheduleService.Today(clock);
+        var lines = (request.Lines ?? []).Select(l => (Name: (l.Name ?? "").Trim(), l.AmountPerBox)).ToList();
+        var targets = request.Targets ?? [];
         var errors = new List<string>();
         if (request.DeliveryCostPerBox is < 0 or > MaxCostPerBox) errors.Add($"The delivery cost must be between ₹0 and ₹{MaxCostPerBox:N0} per box.");
         if (request.HelperCostPerBox is < 0 or > MaxCostPerBox) errors.Add($"The helper cost must be between ₹0 and ₹{MaxCostPerBox:N0} per box.");
-        if (request.Targets.Any(t => t.Percent is < 0 or > MaxProfitTarget)) errors.Add($"A profit target must be between 0 % and {MaxProfitTarget} %.");
-        var frequencies = await db.DictionaryEntries.AsNoTracking().Where(e => e.DictionaryType == DictionaryType.Frequency).ToDictionaryAsync(e => e.Id, ct);
-        if (request.Targets.Any(t => !frequencies.ContainsKey(t.FrequencyId))) errors.Add("Unknown frequency.");
+        if (lines.Any(l => l.Name.Length == 0)) errors.Add("Every cost line needs a name.");
+        if (lines.Any(l => l.Name.Length > MoneyCostLine.MaxNameLength)) errors.Add($"A cost name can be at most {MoneyCostLine.MaxNameLength} characters.");
+        if (lines.Any(l => l.AmountPerBox is < 0 or > MaxCostPerBox)) errors.Add($"A cost must be between ₹0 and ₹{MaxCostPerBox:N0} per box.");
+        if (lines.GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1)) errors.Add("Two cost lines have the same name.");
+        if (lines.Count > MaxCostLines) errors.Add($"At most {MaxCostLines} cost lines.");
+        if (targets.Any(t => t.Percent is < 0 or > MaxProfitTarget)) errors.Add($"A profit target must be between 0 % and {MaxProfitTarget} %.");
+        if (targets.GroupBy(t => t.FrequencyId).Any(g => g.Count() > 1)) errors.Add("A frequency's target was sent twice.");
+        var frequencyIds = await db.DictionaryEntries.AsNoTracking().Where(e => e.DictionaryType == DictionaryType.Frequency).Select(e => e.Id).ToListAsync(ct);
+        if (targets.Any(t => !frequencyIds.Contains(t.FrequencyId))) errors.Add("Unknown frequency.");
         if (errors.Count > 0) throw new BusinessRuleException(string.Join(" ", errors));
 
-        await SetAsync(DeliveryCostKey, request.DeliveryCostPerBox, ct);
-        await SetAsync(HelperCostKey, request.HelperCostPerBox, ct);
-        foreach (var t in request.Targets) await SetAsync(ProfitTargetKeyPrefix + frequencies[t.FrequencyId].Code, t.Percent, ct);
-        audit.Record(AuditActions.SettingsUpdated, "Settings", "Money", "Money costs and profit targets changed (Money page)", null);
+        var previous = VersionOn(await LoadVersionsAsync(ct), from.AddDays(-1));
+        var version = await db.MoneyCostVersions.Include(v => v.Lines).Include(v => v.Targets).FirstOrDefaultAsync(v => v.EffectiveFrom == from, ct);
+        if (version is null) db.MoneyCostVersions.Add(version = new MoneyCostVersion { EffectiveFrom = from });
+        version.DeliveryCostPerBox = Math.Round(request.DeliveryCostPerBox, 2);
+        version.HelperCostPerBox = Math.Round(request.HelperCostPerBox, 2);
+        foreach (var old in version.Lines.ToList()) version.Lines.Remove(old);
+        for (var i = 0; i < lines.Count; i++)
+            version.Lines.Add(new MoneyCostLine { Name = lines[i].Name, AmountPerBox = Math.Round(lines[i].AmountPerBox, 2), SortOrder = i });
+        foreach (var old in version.Targets.ToList()) version.Targets.Remove(old);
+        // Frequencies not sent keep the target they had before this day.
+        foreach (var id in frequencyIds)
+        {
+            var sent = targets.FirstOrDefault(t => t.FrequencyId == id);
+            var percent = sent?.Percent ?? previous?.Targets.FirstOrDefault(t => t.FrequencyId == id)?.Percent;
+            if (percent is { } p) version.Targets.Add(new MoneyProfitTarget { FrequencyId = id, Percent = Math.Round(p, 2) });
+        }
+        audit.Record(AuditActions.SettingsUpdated, "Settings", "Money", $"Money costs and profit targets changed on the Money page (valid from {from:dd MMM yyyy})", null);
         await db.SaveChangesAsync(ct);
-        return await GetSettingsAsync(ct);
+        return await GetSettingsAsync(from, ct);
     }
+
+    private async Task<List<MoneyCostVersion>> LoadVersionsAsync(CancellationToken ct) =>
+        await db.MoneyCostVersions.AsNoTracking().Include(v => v.Lines).Include(v => v.Targets).OrderBy(v => v.EffectiveFrom).ToListAsync(ct);
+
+    /// <summary>The version valid on <paramref name="day"/>: the latest that started on or before it; before the first one, the first one.</summary>
+    private static MoneyCostVersion? VersionOn(IReadOnlyList<MoneyCostVersion> ordered, DateOnly day) =>
+        ordered.LastOrDefault(v => v.EffectiveFrom <= day) ?? ordered.FirstOrDefault();
+
+    private static decimal TargetOf(MoneyCostVersion? version, int frequencyId) =>
+        version?.Targets.FirstOrDefault(t => t.FrequencyId == frequencyId)?.Percent ?? DefaultProfitTarget;
 
     public async Task<PriceListDto> GetPriceListAsync(CancellationToken ct = default)
     {
@@ -192,8 +255,7 @@ public sealed class MoneyService(IFitzobitDbContext db, IDeliveryCalendarService
         if (end < start) throw new BusinessRuleException("The end of the period cannot be before its start.");
         if (end.DayNumber - start.DayNumber + 1 > MaxEarningsDays) throw new BusinessRuleException($"Choose a period of at most {MaxEarningsDays} days.");
 
-        var settings = await GetSettingsAsync(ct);
-        var allTargets = await db.AppSettings.AsNoTracking().Where(s => s.Key.StartsWith(ProfitTargetKeyPrefix)).ToListAsync(ct);
+        var versions = await LoadVersionsAsync(ct);
         var packages = await db.CustomerPackages.AsNoTracking()
             .Where(p => p.StartDate <= end && p.EndDate >= start)
             .Select(p => new
@@ -201,7 +263,8 @@ public sealed class MoneyService(IFitzobitDbContext db, IDeliveryCalendarService
                 p.Id, p.CustomerId, p.Quantity, p.Price, p.StartDate, p.EndDate,
                 MealType = p.MealType!.DisplayName, MealOrder = p.MealType.SortOrder,
                 Preference = p.Preference!.DisplayName, PreferenceOrder = p.Preference.SortOrder,
-                FrequencyCode = p.Frequency!.Code, Deliveries = p.Frequency.NumericValue
+                p.MealTypeId, p.PreferenceId, p.FrequencyId, Deliveries = p.Frequency!.NumericValue, Frequency = p.Frequency.DisplayName,
+                CustomerCode = p.Customer!.CustomerId, p.Customer.CustomerName
             })
             .ToListAsync(ct);
         var ids = packages.Select(p => p.Id).ToList();
@@ -211,21 +274,25 @@ public sealed class MoneyService(IFitzobitDbContext db, IDeliveryCalendarService
         var groups = await db.CustomerDeliveryGroupAssignments.AsNoTracking().Where(a => a.IsActive && customerIds.Contains(a.CustomerId))
             .Select(a => new { a.CustomerId, a.DeliveryGroup!.GroupNumber }).ToDictionaryAsync(a => a.CustomerId, a => a.GroupNumber, ct);
 
-        decimal Target(string code) => decimal.TryParse(allTargets.FirstOrDefault(t => t.Key == ProfitTargetKeyPrefix + code)?.Value, NumberStyles.Number,
-            CultureInfo.InvariantCulture, out var d) ? d : DefaultProfitTarget;
         var deliveryDays = 0;
         for (var d = start; d <= end; d = d.AddDays(1)) if (calendar.IsDeliveryDay(d)) deliveryDays++;
 
         var total = new Sum();
-        var byBox = new Dictionary<(string, string), (int, int, Sum)>();
+        var byBox = new Dictionary<(string, string), (int, int, string, Sum)>();
+        var costNames = new List<string>();
+        foreach (var v in versions.OrderByDescending(v => v.EffectiveFrom))
+            foreach (var l in v.Lines.OrderBy(l => l.SortOrder))
+                if (!costNames.Contains(l.Name, StringComparer.OrdinalIgnoreCase)) costNames.Add(l.Name);
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var byGroup = new Dictionary<int, Sum>(); // group number; 0 = no group
         var unpriced = 0;
+        var unpricedPackages = new List<UnpricedPackageDto>();
         foreach (var p in packages)
         {
             var priced = p.Price is not null && p.Deliveries is > 0;
             var perDay = priced ? p.Price!.Value / p.Deliveries!.Value : 0m;
-            var target = Target(p.FrequencyCode);
             var pausedDays = paused[p.Id].ToHashSet();
+            var unpricedBefore = unpriced;
             var first = p.StartDate > start ? p.StartDate : start;
             var last = p.EndDate < end ? p.EndDate : end;
             for (var d = first; d <= last; d = d.AddDays(1))
@@ -233,54 +300,58 @@ public sealed class MoneyService(IFitzobitDbContext db, IDeliveryCalendarService
                 if (!calendar.IsDeliveryDay(d) || pausedDays.Contains(d)) continue;
                 if (!priced) { unpriced += p.Quantity; continue; }
                 var group = groups.TryGetValue(p.CustomerId, out var g) ? g : 0;
-                if (!byBox.TryGetValue((p.MealType, p.Preference), out var box)) byBox[(p.MealType, p.Preference)] = box = (p.MealOrder, p.PreferenceOrder, new Sum());
+                var version = VersionOn(versions, d); // the costs valid on that day
+                if (!byBox.TryGetValue((p.MealType, p.Preference), out var box))
+                    byBox[(p.MealType, p.Preference)] = box = (p.MealOrder, p.PreferenceOrder, $"{p.MealTypeId}-{p.PreferenceId}", new Sum());
                 if (!byGroup.TryGetValue(group, out var groupSum)) byGroup[group] = groupSum = new Sum();
-                foreach (var sum in new[] { total, box.Item3, groupSum })
-                    sum.Add(p.Quantity, perDay, settings.DeliveryCostPerBox, settings.HelperCostPerBox, target);
+                var lines = version?.Lines.ToList() ?? [];
+                foreach (var l in lines) usedNames.Add(l.Name);
+                foreach (var sum in new[] { total, box.Item4, groupSum })
+                    sum.Add(p.Quantity, perDay, version?.DeliveryCostPerBox ?? DefaultDeliveryCost, version?.HelperCostPerBox ?? DefaultHelperCost,
+                        lines, TargetOf(version, p.FrequencyId));
             }
+            if (unpriced > unpricedBefore)
+                unpricedPackages.Add(new UnpricedPackageDto(p.CustomerId, p.CustomerCode, p.CustomerName,
+                    $"{p.Preference} {p.MealType} ×{p.Quantity} · {p.Frequency}", unpriced - unpricedBefore));
         }
 
-        return new EarningsDto(start, end, deliveryDays, total.ToDto("Total"),
+        return new EarningsDto(start, end, deliveryDays, costNames.Where(usedNames.Contains).ToList(), total.ToDto("Total", null),
             byBox.OrderBy(b => b.Value.Item1).ThenBy(b => b.Key.Item1).ThenBy(b => b.Value.Item2).ThenBy(b => b.Key.Item2)
-                .Select(b => b.Value.Item3.ToDto($"{b.Key.Item1} · {b.Key.Item2}")).ToList(),
-            byGroup.OrderBy(g => g.Key == 0).ThenBy(g => g.Key).Select(g => g.Value.ToDto(g.Key > 0 ? DeliveryGroup.Label(g.Key) : "No group")).ToList(),
-            unpriced);
+                .Select(b => b.Value.Item4.ToDto($"{b.Key.Item1} · {b.Key.Item2}", b.Value.Item3)).ToList(),
+            byGroup.OrderBy(g => g.Key == 0).ThenBy(g => g.Key)
+                .Select(g => g.Value.ToDto(g.Key > 0 ? DeliveryGroup.Label(g.Key) : "No group", g.Key.ToString(CultureInfo.InvariantCulture))).ToList(),
+            unpriced, unpricedPackages.OrderBy(u => u.CustomerCode).ToList());
     }
 
     /// <summary>How one meal's price splits: price per meal = package price ÷ deliveries; profit = that × target %; food = the rest after the
-    /// delivery and helper costs and the profit.</summary>
-    public static (decimal PerMeal, decimal Profit, decimal Food) Split(decimal packagePrice, int deliveries, decimal deliveryCost, decimal helperCost,
-        decimal targetPercent)
+    /// per-box costs (delivery, helper and the added lines) and the profit.</summary>
+    public static (decimal PerMeal, decimal Profit, decimal Food) Split(decimal packagePrice, int deliveries, decimal costsPerBox, decimal targetPercent)
     {
         var perMeal = packagePrice / deliveries;
         var profit = perMeal * targetPercent / 100m;
-        return (perMeal, profit, perMeal - deliveryCost - helperCost - profit);
+        return (perMeal, profit, perMeal - costsPerBox - profit);
     }
 
     private sealed class Sum
     {
         private int _boxes;
         private decimal _earned, _delivery, _helper, _profit;
+        private readonly Dictionary<string, decimal> _other = new(StringComparer.OrdinalIgnoreCase);
 
-        public void Add(int boxes, decimal earned, decimal deliveryPerBox, decimal helperPerBox, decimal targetPercent)
+        public void Add(int boxes, decimal earned, decimal deliveryPerBox, decimal helperPerBox, IEnumerable<MoneyCostLine> lines, decimal targetPercent)
         {
             _boxes += boxes;
             _earned += earned;
             _delivery += boxes * deliveryPerBox;
             _helper += boxes * helperPerBox;
+            foreach (var l in lines) _other[l.Name] = _other.GetValueOrDefault(l.Name) + boxes * l.AmountPerBox;
             _profit += earned * targetPercent / 100m;
         }
 
-        public MoneyLineDto ToDto(string label) => new(label, _boxes, R(_earned), R(_delivery), R(_helper), R(_profit), R(_earned - _delivery - _helper - _profit));
+        public MoneyLineDto ToDto(string label, string? key) =>
+            new(label, _boxes, R(_earned), R(_delivery), R(_helper), _other.ToDictionary(o => o.Key, o => R(o.Value)), R(_profit),
+                R(_earned - _delivery - _helper - _other.Values.Sum() - _profit), key);
 
         private static decimal R(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
-    }
-
-    private async Task SetAsync(string key, decimal value, CancellationToken ct)
-    {
-        var setting = await db.AppSettings.FirstOrDefaultAsync(s => s.Key == key, ct);
-        if (setting is null) db.AppSettings.Add(setting = new AppSetting { Key = key });
-        setting.Value = value.ToString(CultureInfo.InvariantCulture);
-        setting.UpdatedBy = currentUser.UserName;
     }
 }

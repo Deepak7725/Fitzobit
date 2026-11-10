@@ -26,7 +26,8 @@ public class MoneyTests
         var money = test.Money(db);
 
         var settings = await money.GetSettingsAsync();
-        Assert.Equal((30m, 25m), (settings.DeliveryCostPerBox, settings.HelperCostPerBox));
+        Assert.Equal((30m, 25m, new DateOnly(2000, 1, 1)), (settings.DeliveryCostPerBox, settings.HelperCostPerBox, settings.EffectiveFrom));
+        Assert.Empty(settings.Lines);
         Assert.Equal(30m, settings.Targets.Single(t => t.Frequency == "Monthly").Percent);
         Assert.Equal(40m, settings.Targets.Single(t => t.Frequency == "Weekly").Percent);
 
@@ -164,8 +165,12 @@ public class MoneyTests
 
         var week = await test.Money(db).EarningsAsync(D(10, 12), D(10, 18)); // Mon 12 – Sun 18 October
         Assert.Equal((6, 6), (week.DeliveryDays, week.UnpricedBoxes));
+        var unpricedPackage = Assert.Single(week.UnpricedPackages);
+        Assert.Equal(("Bala", "Veg Meal bowl ×1 · Weekly", 6), (unpricedPackage.CustomerName, unpricedPackage.Package, unpricedPackage.Boxes));
         // 5 delivered boxes × 3,499 ÷ 26 = 672.88; delivery 5 × 30, helper 5 × 25; profit 30 % = 201.87; food = the rest.
-        Assert.Equal(new MoneyLineDto("Total", 5, 672.88m, 150m, 125m, 201.87m, 196.02m), week.Totals);
+        var t = week.Totals;
+        Assert.Equal((5, 672.88m, 150m, 125m, 201.87m, 196.02m), (t.Boxes, t.Earned, t.DeliveryCost, t.HelperCost, t.TargetProfit, t.FoodBudget));
+        Assert.Empty(t.OtherCosts);
         Assert.Equal("Medium · Veg", Assert.Single(week.ByBox).Label);
         Assert.Equal(("No group", 5), (Assert.Single(week.ByGroup).Label, week.ByGroup[0].Boxes));
 
@@ -175,10 +180,80 @@ public class MoneyTests
     }
 
     [Fact]
+    public async Task Costs_keep_their_history_and_each_day_uses_the_costs_valid_then()
+    {
+        using var test = new TestDatabase();
+        await using var db = test.CreateContext();
+        var money = test.Money(db);
+        var (monthly, weekly) = (Id(test, DictionaryType.Frequency, "MONTHLY"), Id(test, DictionaryType.Frequency, "WEEKLY"));
+        await test.Commands(db).CreateAsync(test.NewCustomer(frequency: "MONTHLY")); // Medium Veg monthly ₹3,499 from Mon 12 Oct
+
+        var saved = await money.SaveSettingsAsync(new SaveMoneySettingsRequest
+        {
+            EffectiveFrom = D(10, 14), DeliveryCostPerBox = 32, HelperCostPerBox = 25,
+            Lines = [new SaveCostLine { Name = " Plate ", AmountPerBox = 10 }],
+            Targets = [new SaveProfitTarget { FrequencyId = monthly, Percent = 35 }] // weekly not sent: keeps 40 %
+        });
+        Assert.Equal((D(10, 14), 32m, "Plate", 35m, 40m), (saved.EffectiveFrom, saved.DeliveryCostPerBox, saved.Lines.Single().Name,
+            saved.Targets.Single(x => x.FrequencyId == monthly).Percent, saved.Targets.Single(x => x.FrequencyId == weekly).Percent));
+        Assert.Equal([D(10, 14), new DateOnly(2000, 1, 1)], saved.History.Select(h => h.EffectiveFrom));
+        Assert.Equal(67m, saved.History[0].CostsPerBox);
+
+        var before = await money.GetSettingsAsync(D(10, 13));
+        Assert.Equal((30m, 0, 30m), (before.DeliveryCostPerBox, before.Lines.Count, before.Targets.Single(x => x.FrequencyId == monthly).Percent));
+
+        // Saving the same day again replaces that version.
+        await money.SaveSettingsAsync(new SaveMoneySettingsRequest
+        {
+            EffectiveFrom = D(10, 14), DeliveryCostPerBox = 32, HelperCostPerBox = 25,
+            Lines = [new SaveCostLine { Name = "Plate", AmountPerBox = 10 }], Targets = [new SaveProfitTarget { FrequencyId = monthly, Percent = 35 }]
+        });
+        Assert.Equal(2, await db.MoneyCostVersions.CountAsync());
+
+        // Mon 12 – Sat 17 Oct: two days with the old costs, four with the new ones.
+        var week = await money.EarningsAsync(D(10, 12), D(10, 17));
+        var t = week.Totals;
+        Assert.Equal(["Plate"], week.CostNames);
+        Assert.Equal((6, 807.46m, 188m, 150m, 40m, 269.15m, 160.31m),
+            (t.Boxes, t.Earned, t.DeliveryCost, t.HelperCost, t.OtherCosts["Plate"], t.TargetProfit, t.FoodBudget));
+        Assert.Equal($"{Id(test, DictionaryType.MealType, "MEDIUM")}-{Id(test, DictionaryType.Preference, "VEG")}", week.ByBox.Single().Key);
+
+        foreach (var bad in new[]
+                 {
+                     new SaveMoneySettingsRequest { Lines = [new SaveCostLine { Name = "", AmountPerBox = 1 }] },
+                     new SaveMoneySettingsRequest { Lines = [new SaveCostLine { Name = "Plate", AmountPerBox = 1 }, new SaveCostLine { Name = "plate", AmountPerBox = 2 }] },
+                     new SaveMoneySettingsRequest { Lines = [new SaveCostLine { Name = "Plate", AmountPerBox = -1 }] }
+                 })
+            await Assert.ThrowsAsync<BusinessRuleException>(() => money.SaveSettingsAsync(bad));
+    }
+
+    [Fact]
+    public async Task The_history_migration_keeps_the_costs_saved_before_it()
+    {
+        using var test = new TestDatabase();
+        await using (var db = test.CreateContext())
+        {
+            await db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>().MigrateAsync("20261110095915_MoneyModule"); // AppSettings era
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE "AppSettings" SET "Value" = '33' WHERE "Key" = 'Money.DeliveryCostPerBox';
+                UPDATE "AppSettings" SET "Value" = '28' WHERE "Key" = 'Money.ProfitTarget.MONTHLY';
+                """);
+            await db.Database.MigrateAsync();
+        }
+
+        await using var check = test.CreateContext();
+        var settings = await test.Money(check).GetSettingsAsync(D(10, 7));
+        Assert.Equal((new DateOnly(2000, 1, 1), 33m, 25m), (settings.EffectiveFrom, settings.DeliveryCostPerBox, settings.HelperCostPerBox));
+        Assert.Equal(28m, settings.Targets.Single(t => t.Frequency == "Monthly").Percent);
+        Assert.Equal(40m, settings.Targets.Single(t => t.Frequency == "Weekly").Percent);
+        Assert.False(await check.AppSettings.AnyAsync(s => s.Key.StartsWith("Money.")));
+    }
+
+    [Fact]
     public void The_split_matches_the_owner_s_example()
     {
         // Medium Veg monthly ₹2,699 ÷ 26 = ₹103.81 per meal; 30 % profit ₹31.14; ₹30 delivery + ₹25 helper leave ₹17.67 for food.
-        var (perMeal, profit, food) = MoneyService.Split(2699m, 26, 30m, 25m, 30m);
+        var (perMeal, profit, food) = MoneyService.Split(2699m, 26, 30m + 25m, 30m);
         Assert.Equal((103.81m, 31.14m, 17.67m), (Math.Round(perMeal, 2), Math.Round(profit, 2), Math.Round(food, 2)));
     }
 }

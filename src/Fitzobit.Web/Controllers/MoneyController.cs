@@ -12,7 +12,7 @@ namespace Fitzobit.Web.Controllers;
 public sealed class MoneyController(MoneyService money) : ControllerBase
 {
     [HttpGet("settings")]
-    public Task<MoneySettingsDto> Settings(CancellationToken ct) => money.GetSettingsAsync(ct);
+    public Task<MoneySettingsDto> Settings([FromQuery] DateOnly? date, CancellationToken ct) => money.GetSettingsAsync(date, ct);
 
     [HttpPut("settings")]
     public Task<MoneySettingsDto> SaveSettings(SaveMoneySettingsRequest request, CancellationToken ct) => money.SaveSettingsAsync(request, ct);

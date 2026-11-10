@@ -156,6 +156,43 @@ internal sealed class PackagePriceConfiguration : IEntityTypeConfiguration<Domai
     }
 }
 
+internal sealed class MoneyCostVersionConfiguration : IEntityTypeConfiguration<Domain.Money.MoneyCostVersion>
+{
+    public void Configure(EntityTypeBuilder<Domain.Money.MoneyCostVersion> b)
+    {
+        b.ToTable("MoneyCostVersions", t =>
+        {
+            t.HasCheckConstraint("CK_MoneyCostVersions_DeliveryCost", "\"DeliveryCostPerBox\" >= 0");
+            t.HasCheckConstraint("CK_MoneyCostVersions_HelperCost", "\"HelperCostPerBox\" >= 0");
+        });
+        b.HasIndex(v => v.EffectiveFrom).IsUnique();
+        b.Property(v => v.CreatedBy).HasMaxLength(100);
+        b.Property(v => v.UpdatedBy).HasMaxLength(100);
+        b.HasMany(v => v.Lines).WithOne(l => l.Version).HasForeignKey(l => l.VersionId).OnDelete(DeleteBehavior.Cascade);
+        b.HasMany(v => v.Targets).WithOne(t => t.Version).HasForeignKey(t => t.VersionId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class MoneyCostLineConfiguration : IEntityTypeConfiguration<Domain.Money.MoneyCostLine>
+{
+    public void Configure(EntityTypeBuilder<Domain.Money.MoneyCostLine> b)
+    {
+        b.ToTable("MoneyCostLines", t => t.HasCheckConstraint("CK_MoneyCostLines_Amount", "\"AmountPerBox\" >= 0"));
+        b.Property(l => l.Name).HasMaxLength(Domain.Money.MoneyCostLine.MaxNameLength).IsRequired();
+        b.HasIndex(l => new { l.VersionId, l.SortOrder });
+    }
+}
+
+internal sealed class MoneyProfitTargetConfiguration : IEntityTypeConfiguration<Domain.Money.MoneyProfitTarget>
+{
+    public void Configure(EntityTypeBuilder<Domain.Money.MoneyProfitTarget> b)
+    {
+        b.ToTable("MoneyProfitTargets", t => t.HasCheckConstraint("CK_MoneyProfitTargets_Percent", "\"Percent\" BETWEEN 0 AND 95"));
+        b.HasIndex(t => new { t.VersionId, t.FrequencyId }).IsUnique();
+        b.HasOne(t => t.Frequency).WithMany().HasForeignKey(t => t.FrequencyId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 internal sealed class AppSettingConfiguration : IEntityTypeConfiguration<AppSetting>
 {
     public void Configure(EntityTypeBuilder<AppSetting> b)

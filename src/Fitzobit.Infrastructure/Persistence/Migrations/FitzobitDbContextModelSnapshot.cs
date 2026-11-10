@@ -692,6 +692,116 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                     b.ToTable("WhatsAppMessages");
                 });
 
+            modelBuilder.Entity("Fitzobit.Domain.Money.MoneyCostLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountPerBox")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VersionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VersionId", "SortOrder");
+
+                    b.ToTable("MoneyCostLines", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MoneyCostLines_Amount", "\"AmountPerBox\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Money.MoneyCostVersion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("DeliveryCostPerBox")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("HelperCostPerBox")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("MoneyCostVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MoneyCostVersions_DeliveryCost", "\"DeliveryCostPerBox\" >= 0");
+
+                            t.HasCheckConstraint("CK_MoneyCostVersions_HelperCost", "\"HelperCostPerBox\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Money.MoneyProfitTarget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("FrequencyId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Percent")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int>("VersionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FrequencyId");
+
+                    b.HasIndex("VersionId", "FrequencyId")
+                        .IsUnique();
+
+                    b.ToTable("MoneyProfitTargets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MoneyProfitTargets_Percent", "\"Percent\" BETWEEN 0 AND 95");
+                        });
+                });
+
             modelBuilder.Entity("Fitzobit.Domain.Money.PackagePrice", b =>
                 {
                     b.Property<int>("Id")
@@ -977,6 +1087,36 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 
+            modelBuilder.Entity("Fitzobit.Domain.Money.MoneyCostLine", b =>
+                {
+                    b.HasOne("Fitzobit.Domain.Money.MoneyCostVersion", "Version")
+                        .WithMany("Lines")
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Version");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Money.MoneyProfitTarget", b =>
+                {
+                    b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Frequency")
+                        .WithMany()
+                        .HasForeignKey("FrequencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitzobit.Domain.Money.MoneyCostVersion", "Version")
+                        .WithMany("Targets")
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Frequency");
+
+                    b.Navigation("Version");
+                });
+
             modelBuilder.Entity("Fitzobit.Domain.Money.PackagePrice", b =>
                 {
                     b.HasOne("Fitzobit.Domain.Dictionaries.DictionaryEntry", "Frequency")
@@ -1026,6 +1166,13 @@ namespace Fitzobit.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Fitzobit.Domain.DeliveryGroups.DeliveryGroup", b =>
                 {
                     b.Navigation("Assignments");
+                });
+
+            modelBuilder.Entity("Fitzobit.Domain.Money.MoneyCostVersion", b =>
+                {
+                    b.Navigation("Lines");
+
+                    b.Navigation("Targets");
                 });
 #pragma warning restore 612, 618
         }

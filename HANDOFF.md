@@ -2,51 +2,41 @@
 
 > **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
 > The app was rebuilt around a **new business model** (Parts 1–9 built 2026-10-08 … 10-31 and **pushed/live**; Part 10 "Pause for
-> everyone" (2026-11-04), Part 11 "No paused days limit" (2026-11-05) and Part 12 "Money page" (2026-11-10) built and **NOT yet committed**).
+> everyone", Part 11 "No paused days limit" and Part 12 "Money page" are pushed (`f6ac924`); Part 13 (Money cost lines + history) is **not committed**.
 > **Start with §00.** The owner wants to be asked ("don't assume, ask doubts") — use multiple-choice questions, then show the plan.
 > **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
 ---
 
-## 00. OPEN ITEMS (2026-11-10)
+## 00. STATUS (2026-11-10, evening)
 
-Part 12 "Money page" is built (see §1 Part 12), not committed. Still open:
-- Live WhatsApp catalogue read 2026-11-10 (WhatsApp desktop, Fitzobit chat > Contact info > Catalogue; mouse clicks do not reach that
-  panel, keyboard Tab works; Enter on a product row ADDS IT TO THE CART, so don't - one item was added by mistake and removed at once, nothing
-  sent). 14 products: Regular/Medium/Large Fit Box weekly 899/999/1149, monthly 2999/3499/3999; Oats & Muesli 999/3499; Protein Oats Bowl
-  1199/3849; Protein Salads 894/2899; Daily Detox Drink 333 weekly / 1049 monthly (owner). Seeded accordingly (see Part 12).
-- **Call recordings** `Downloads/Call with Siva*.m4a` (Tamil + English): transcribed locally with faster-whisper
-  (`pip install --user faster-whisper`, models cached under the user's `.cache/huggingface`); "small" was unusable, "medium" was running.
-  The owner summarised the call himself (= the Money page request).
-- Trail prices: none seeded (owner: Trail gets its own price per box); he fills them on the Money page.
+Parts 10-12 were committed and pushed by the owner (`f6ac924`) and are live; the Manager account exists on the live site. **Part 13 "Money
+cost lines + history + day total" is built and NOT committed** (see §1 Part 13; commit message in §0.1). Nothing else open; ask the owner.
+Notes: call recordings were summarised by the owner (faster-whisper "medium" installed, model cached under the user's .cache/huggingface,
+stopped before finishing). Live Money page showed Detox drink weekly (Rs 333/6 = Rs 55.5/meal) with a negative food budget once Rs 55 of
+costs are taken: told the owner.
 
 ---
 
-## 0. Current state (2026-11-10, after Part 12)
+## 0. Current state (2026-11-10, after Part 13)
 
 | Item | Value |
 |---|---|
 | Project root | `E:\ClaudeWorkspace\Fitzobit` (Windows 11; shells: PowerShell + Git Bash) |
-| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`, in sync with origin up to `f82d3d8` (Daily Orders). Pushed: Parts 1–9 incl. pincode fix, logo, Google Maps link (`0966a70`), renewal reminders (`4f375e8`), same-day pause (`c30072f`), auto-Active on package save (`20cbeba`), no-cache start page (`3560a8a`), GitHub wake-up (`a1cff95`), Daily Orders (`f82d3d8`). **Parts 10 (Pause for everyone), 11 (No paused days limit) and 12 (Money page) are uncommitted in the working tree** (commit message in §0.1). |
+| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`, in sync with origin up to `f82d3d8` (Daily Orders). Pushed: Parts 1–9 incl. pincode fix, logo, Google Maps link (`0966a70`), renewal reminders (`4f375e8`), same-day pause (`c30072f`), auto-Active on package save (`20cbeba`), no-cache start page (`3560a8a`), GitHub wake-up (`a1cff95`), Daily Orders (`f82d3d8`). Parts 10-12 pushed as `f6ac924`. **Part 13 (Money cost lines, history, day total) is uncommitted** (commit message in §0.1). |
 | **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–9 (until 2026-10-26 a tab kept old screens after a deploy; fixed by `Infrastructure/StaticFileCaching.cs`: index.html `no-store`, /assets/* (hashed) 1 year immutable, other files 1 hour). Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
 | Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
 | Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
-| Migrations | 11: Part 12 added `20261110095915_MoneyModule` (PackagePrices, CustomerPackages.Price, seeded prices/costs/targets). Part 11 added `20261105060851_UnlimitedPauses` (check `PausedCount >= 0` + one-time recalculation of current packages, see §1 Part 11). Part 10 added `20261104164420_FestivePauses`. Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
+| Migrations | 12: Part 13 added `20261110105543_MoneyCostHistory` (MoneyCostVersions/Lines/ProfitTargets; copies the Money.* AppSettings into a first version valid from 2000-01-01, then deletes them; Down restores them). Part 12 added `20261110095915_MoneyModule` (PackagePrices, CustomerPackages.Price, seeded prices/costs/targets). Part 11 added `20261105060851_UnlimitedPauses` (check `PausedCount >= 0` + one-time recalculation of current packages, see §1 Part 11). Part 10 added `20261104164420_FestivePauses`. Part 8 added `20261026100639_RenewalReminders`. Part 7 added `20261021043225_GoogleMapUrl` (`Customers.GoogleMapUrl`, varchar 2000). Part 6 added `20261020074639_PastPackages` (`CustomerPackages.ArchivedAt` + index; no data change). Part 4 added `20261016094926_CustomerPackagesNotesAndDeliveryTime` ("start fresh": drops the old single package per customer — see §1 Part 4); Part 5 added `20261019063025_AlternatePhoneAndPausableFrequencies` (column `Customers.AlternatePhoneNumber`, `DictionaryEntries.CanPause`, sets it TRUE for frequency code MONTHLY only). `has-pending-model-changes` = none. |
 | Run locally | The owner runs the app from **Visual Studio** (IIS Express profile → https://localhost:44363, or `http` → http://localhost:5080) and uses it in his own **Chrome**. `.\start.ps1` → http://localhost:5080 also works. After UI changes run `npm run build` in `src\Fitzobit.UI` (wwwroot is served from disk; he reloads with Ctrl+F5); after C# changes he restarts in VS. |
-| Tests | **229 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 code warnings (a full `--no-incremental` rebuild shows 2 analyzer warnings EF1002 in `DatabaseMigrationTests.cs` helpers that predate Part 10/11). UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
+| Tests | **232 passing**, all on PostgreSQL (`FITZOBIT_TEST_PG` or the same user secret; every test creates/drops its own temp DB). Build: 0 code warnings (a full `--no-incremental` rebuild shows 2 analyzer warnings EF1002 in `DatabaseMigrationTests.cs` helpers that predate Part 10/11). UI: `tsc` clean (no ESLint configured). `dotnet publish -c Release` OK. |
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
-1. **Commit + push Parts 10, 11 and 12** (all uncommitted; one commit is fine). Suggested message:
-   `Pause for everyone, no paused days limit, Money page` — admins pause festive/emergency days for every running package (migration
-   FestivePauses); every paused day moves the end date (migration UnlimitedPauses recalculates current packages); paused count "own + for
-   everyone" on package card, Customers column, exports and Daily Orders; Money page for Manager accounts: costs per box, profit targets,
-   price list from the WhatsApp catalogue, package prices, earnings per day/week/month (migration MoneyModule).
-   **Then create the Manager login** on the live site (Admin: Settings > Users > add, role Manager, e.g. `manager_fitzobit`); the owner
-   wrote a password in chat on 2026-11-10 — Claude did not use or store it and suggested choosing another.
-   **After the deploy:** open a customer who had paused more than 3 days and check the new end date; Recent customer changes shows one
-   "Package end date recalculated" line per changed customer (performer "system").
+1. **Commit + push Part 13** (Parts 10-12 are pushed). Suggested message: `Money page: own cost lines, cost history and day totals` (Manager adds
+   cost lines per box such as Plate; costs and profit targets saved with a Valid from date and each day uses the costs valid then; breakdown
+   shows every line and the day total of a box; unpriced packages listed by customer; migration MoneyCostHistory).
 2. **12 pm wake-up = GitHub Actions** `.github/workflows/wake-up.yml` (11:40, 11:55, 12:05 IST) — pushed and tested green by the owner
    (2026-10-27). cron-job.org did NOT work (Render answered its servers with a large page and never started the app); owner told to
    disable that job.
@@ -224,7 +214,24 @@ Decisions asked from the owner (do not change without asking):
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
 
-### Part 12 (done 2026-11-10, not yet committed) — Money page (Manager accounts only)
+### Part 13 (done 2026-11-10, not yet committed) — Money: own cost lines, cost history, day total
+Owner's answers (option questions, 2026-11-10):
+- **Cost lines** the Manager adds by name ("Plate" Rs 10): always **per box, for all boxes**; Delivery + petrol and Helper stay as their own
+  fixed fields; every line is shown separately in the breakdown, the day total, the earnings cards and tables (`EarningsDto.CostNames`,
+  `MoneyLineDto.OtherCosts`). Max 30 lines, names unique (case-insensitive), <= 60 chars.
+- **History for everything** (costs, lines, profit %): table `MoneyCostVersions` (unique `EffectiveFrom`) + `MoneyCostLines` + `MoneyProfitTargets`.
+  Save has a **"Valid from" date (default today)**; same date = that version replaced; frequencies not sent keep the previous target. Each
+  delivery day uses the latest version with EffectiveFrom <= day (before the first: the first). `GET api/money/settings?date=`.
+  The card shows today's values and a one-line history ("from 09 Nov 2026 Rs 65.0/box · from the start Rs 55.0/box").
+- **Day total** under the breakdown: for the selected box (meal type · preference) and a chosen day (default today): boxes, earned, each
+  cost, target profit, left for food (`MoneyLineDto.Key` = "mealTypeId-preferenceId").
+- **Unpriced packages** now listed by customer (link to `/data?q=CODE`) under the warning (`EarningsDto.UnpricedPackages`) — the owner asked
+  what "1 box(es) belong to packages without a price" meant on the live site.
+- Deleting a frequency also deletes its profit targets. Tests: `MoneyTests` history + migration-carry-over tests.
+- Verified on scratch DB `fitzobit_ui` (dropped): added Plate Rs 10 valid from 9 Nov in the UI; history line; today/month tables with a
+  Plate column; month view charged Plate only from 9 Nov; Medium Veg day total; unpriced Meal bowl package listed.
+
+### Part 12 (done 2026-11-10, pushed `f6ac924`) — Money page (Manager accounts only)
 Owner + Siva's request (phone call; owner's summary and answers to option questions, 2026-11-10):
 - **Who:** only **Manager** role accounts see it (policy `Policies.Money` = role Manager; Admins get 403, no menu item, package prices are
   null in their API responses and their package edits ignore `Price`). Menu item "Money" (`/money`, `pages/MoneyPage.tsx`).
@@ -509,7 +516,7 @@ Browser pane gotcha: after a layout change, clicks by coordinate can hit the wro
 ```
 Continue working on the Fitzobit Delivery Management app in E:\ClaudeWorkspace\Fitzobit.
 First read E:\ClaudeWorkspace\Fitzobit\HANDOFF.md completely (section 00 = my next request and the questions
-to ask me, section 0 = current state and open items, section 1 = what Parts 1-12 built, section 3 = how to
+to ask me, section 0 = current state and open items, section 1 = what Parts 1-13 built, section 3 = how to
 build/test/verify).
 Inspect the existing code before changing anything. Do not rebuild working functionality.
 Use PostgreSQL (local appsettings.Local.json / Neon). Do not run git commit or git push - I commit and push myself.

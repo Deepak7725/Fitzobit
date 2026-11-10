@@ -449,12 +449,29 @@ export interface ProfitTarget {
   percent: number;
 }
 
+export interface CostLine {
+  name: string;
+  amountPerBox: number;
+}
+
+export interface CostVersion {
+  effectiveFrom: string;
+  costsPerBox: number;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+/** The costs and targets valid on a day (effectiveFrom = when they started), plus every saved version. */
 export interface MoneySettings {
+  effectiveFrom: string;
   deliveryCostPerBox: number;
   helperCostPerBox: number;
+  /** Cost lines added by the Manager, per box, for all boxes (e.g. Plate ₹10). */
+  lines: CostLine[];
   targets: ProfitTarget[];
   updatedAt: string | null;
   updatedBy: string | null;
+  history: CostVersion[];
 }
 
 export interface PriceOption {
@@ -486,20 +503,28 @@ export interface MoneyLine {
   earned: number;
   deliveryCost: number;
   helperCost: number;
+  /** Added cost lines by name. */
+  otherCosts: Record<string, number>;
   targetProfit: number;
-  /** Left for food after delivery, helper and target profit (negative = price too low). */
+  /** Left for food after all costs and the target profit (negative = price too low). */
   foodBudget: number;
+  /** By box: "mealTypeId-preferenceId"; by group: group number ("0" = no group). */
+  key: string | null;
 }
 
 export interface Earnings {
   from: string;
   to: string;
   deliveryDays: number;
+  /** Names of the added cost lines used in the period, in display order. */
+  costNames: string[];
   totals: MoneyLine;
   byBox: MoneyLine[];
   byGroup: MoneyLine[];
   /** Boxes of packages without a price (left out of the money figures). */
   unpricedBoxes: number;
+  /** Those packages, by customer. */
+  unpricedPackages: { customerId: number; customerCode: string; customerName: string; package: string; boxes: number }[];
 }
 
 export interface CreateCustomerResult {
@@ -952,8 +977,14 @@ export const api = {
   dailyOrders: (date: string | null, signal?: AbortSignal) => get<DailyOrders>(`/api/daily-orders${query({ date })}`, signal),
   exportDailyOrders: (date: string, format: ExportFormat) => download('/api/daily-orders/export', { date, format }),
 
-  moneySettings: (signal?: AbortSignal) => get<MoneySettings>('/api/money/settings', signal),
-  saveMoneySettings: (request: { deliveryCostPerBox: number; helperCostPerBox: number; targets: { frequencyId: number; percent: number }[] }) =>
+  moneySettings: (date: string | null, signal?: AbortSignal) => get<MoneySettings>(`/api/money/settings${query({ date })}`, signal),
+  saveMoneySettings: (request: {
+    effectiveFrom: string;
+    deliveryCostPerBox: number;
+    helperCostPerBox: number;
+    lines: CostLine[];
+    targets: { frequencyId: number; percent: number }[];
+  }) =>
     send<MoneySettings>('PUT', '/api/money/settings', request),
   priceList: (signal?: AbortSignal) => get<PriceList>('/api/money/prices', signal),
   savePriceList: (prices: { mealTypeId: number; preferenceId: number; frequencyId: number; price: number | null }[]) =>

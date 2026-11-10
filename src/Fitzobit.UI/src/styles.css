@@ -658,8 +658,17 @@ a.hbar-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 1p
 .money-bar { display: flex; height: 12px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
 .money-bar-row { display: flex; justify-content: space-between; font-size: 12.5px; }
 .money-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
-.mb-delivery { background: #378add; }
-.mb-helper { background: #7f77dd; }
-.mb-profit { background: #1d9e75; }
-.mb-food { background: #ba7517; }
 .money-table { margin-top: 16px; }
+.money-lines-title { margin: 18px 0 8px; }
+.money-line-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px 36px; gap: 8px; align-items: center; margin-bottom: 8px; max-width: 560px; }
+.money-save-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.money-save-row .field-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.money-day-total { margin-top: 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.money-day-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.money-day-head p { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.money-day-head .field-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.money-day-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.money-day-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.money-save-row input[type='date'], .money-day-head input[type='date'] { width: 150px; }
+.money-unpriced { margin: 6px 0 0; padding-left: 0; }
+.money-unpriced-box { flex-direction: column; align-items: flex-start; gap: 4px; } .money-unpriced-box p { margin: 0; }
