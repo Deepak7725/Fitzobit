@@ -9,7 +9,7 @@ import { Modal, useToast } from '../../components/feedback';
 
 /** Settings → General → Delivery area: the one city Fitzobit serves. Customer locations are looked up inside it. */
 export default function DeliveryAreaCard() {
-  const { isAdmin } = useAuth();
+  const { isManager } = useAuth();
   const toast = useToast();
   const area = useApi(api.deliveryArea);
   const [editing, setEditing] = useState(false);
@@ -33,7 +33,7 @@ export default function DeliveryAreaCard() {
       title={<><MapPinned size={18} /> Delivery area</>}
       subtitle="The city Fitzobit delivers in. Customer addresses are located only inside it, so a street name in another city is never used."
       actions={
-        isAdmin && a && (
+        isManager && a && (
           <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
             <Pencil size={14} /> {a.isConfigured ? 'Change' : 'Set city'}
           </button>
@@ -83,7 +83,7 @@ export default function DeliveryAreaCard() {
               </div>
             </dd>
           </dl>
-          {isAdmin && a.isConfigured && (
+          {isManager && a.isConfigured && (
             <p className="footnote">
               <button className="btn btn-secondary btn-sm" onClick={relocate} disabled={queuing}>
                 <LocateFixed size={14} /> {queuing ? 'Queuing…' : 'Retry all unavailable locations'}

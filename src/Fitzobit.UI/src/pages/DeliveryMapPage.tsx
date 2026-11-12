@@ -44,7 +44,7 @@ const DEFAULT_STATUSES = ['ACTIVE', 'PAUSED'];
 /** Data classification: customers by longitude (X) and latitude (Y), coloured by delivery group. */
 export default function DeliveryMapPage() {
   const toast = useToast();
-  const { isAdmin } = useAuth();
+  const { isManager } = useAuth();
   const dictionaries = useDictionaries();
   const plot = useRef<ClusterPlotHandle>(null);
   const [statuses, setStatuses] = useState<string[]>(DEFAULT_STATUSES);
@@ -216,7 +216,7 @@ export default function DeliveryMapPage() {
 
       {data && (
         <>
-          <AreaNotices data={data} isAdmin={isAdmin} onRetry={retryLookups} />
+          <AreaNotices data={data} isManager={isManager} onRetry={retryLookups} />
 
           <div className="map-toolbar card">
             <div className="tabs tabs-inline" role="tablist" aria-label="Map mode">
@@ -433,7 +433,7 @@ function toggle<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
-function AreaNotices({ data, isAdmin, onRetry }: { data: MapData; isAdmin: boolean; onRetry: () => void }) {
+function AreaNotices({ data, isManager, onRetry }: { data: MapData; isManager: boolean; onRetry: () => void }) {
   const missing = data.inScope - data.located;
   return (
     <>
@@ -451,9 +451,9 @@ function AreaNotices({ data, isAdmin, onRetry }: { data: MapData; isAdmin: boole
           <AlertTriangle size={18} />
           <div>
             <strong>No service city set.</strong> Locations are looked up only inside the city Fitzobit delivers in.{' '}
-            {isAdmin ? 'Set it under Settings → General → Delivery area.' : 'Ask an administrator to set it (Settings → General).'}
+            {isManager ? 'Set it under Settings → General → Delivery area.' : 'Ask a Manager to set it (Settings → General).'}
           </div>
-          {isAdmin && (
+          {isManager && (
             <Link to="/settings" className="btn btn-secondary btn-sm">
               Open Settings
             </Link>

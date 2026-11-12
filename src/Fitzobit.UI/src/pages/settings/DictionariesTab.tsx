@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowDown, ArrowUp, ListChecks, Pencil, Plus, Power, Trash2 } from 'lucide-react';
 import { api, type DictionaryEntry, type DictionaryType } from '../../api';
 import { useApi } from '../../hooks';
+import { useAuth } from '../../auth';
 import { formatDateTime, formatNumber } from '../../format';
 import { Badge, Card, EmptyState, ErrorPanel, Loading } from '../../components/ui';
 import { ConfirmDialog, Modal, useToast } from '../../components/feedback';
@@ -23,8 +24,9 @@ const TYPES: { type: DictionaryType; label: string; singular: string; help: stri
   },
 ];
 
-/** Settings → Dropdown values (Admin): every value offered on the Add/Edit customer screens. */
+/** Settings → Dropdown values: every value offered on the Add/Edit customer screens. Managers change them; Admins only view. */
 export default function DictionariesTab() {
+  const { isManager: canEdit } = useAuth();
   const [type, setType] = useState<DictionaryType>('Preference');
   const meta = TYPES.find((t) => t.type === type)!;
   const entries = useApi((signal) => api.dictionaryEntries(type, signal), [type]);
@@ -61,11 +63,17 @@ export default function DictionariesTab() {
   return (
     <Card
       title={<><ListChecks size={18} /> Dropdown values</>}
-      subtitle="Values offered on the Add and Edit customer screens. Changes apply immediately. Values in use are deactivated, never deleted."
+      subtitle={
+        canEdit
+          ? 'Values offered on the Add and Edit customer screens. Changes apply immediately. Values in use are deactivated, never deleted.'
+          : 'Values offered on the Add and Edit customer screens. Only a Manager account can change them.'
+      }
       actions={
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
-          <Plus size={15} /> Add {meta.singular}
-        </button>
+        canEdit && (
+          <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
+            <Plus size={15} /> Add {meta.singular}
+          </button>
+        )
       }
     >
       <div className="chips dictionary-types" role="tablist">
@@ -79,13 +87,13 @@ export default function DictionariesTab() {
 
       {entries.error && <ErrorPanel message={entries.error} onRetry={entries.reload} />}
       {entries.loading && !entries.data && <Loading label="Loading values…" />}
-      {entries.data && list.length === 0 && <EmptyState title="No values yet" message={`Add the first ${meta.singular}.`} />}
+      {entries.data && list.length === 0 && <EmptyState title="No values yet" message={canEdit ? `Add the first ${meta.singular}.` : 'A Manager can add values here.'} />}
       {entries.data && list.length > 0 && (
         <div className={`table-wrap ${entries.loading || busy ? 'is-loading' : ''}`}>
           <table className="table">
             <thead>
               <tr>
-                <th className="col-order">Order</th>
+                {canEdit && <th className="col-order">Order</th>}
                 <th>Name</th>
                 <th>Code</th>
                 {isFrequency && <th className="num">Delivery days</th>}
@@ -93,13 +101,13 @@ export default function DictionariesTab() {
                 <th className="num" title="Packages using it (customers for a status)">In use</th>
                 <th>Status</th>
                 <th>Updated</th>
-                <th className="actions-cell" aria-label="Actions" />
+                {canEdit && <th className="actions-cell" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
               {list.map((e, i) => (
                 <tr key={e.id} className={e.isActive ? '' : 'row-inactive'}>
-                  <td className="col-order">
+                  {canEdit && <td className="col-order">
                     <button className="icon-btn icon-btn-xs" disabled={i === 0 || busy} onClick={() => move(i, -1)} aria-label={`Move ${e.displayName} up`}>
                       <ArrowUp size={14} />
                     </button>
@@ -111,7 +119,7 @@ export default function DictionariesTab() {
                     >
                       <ArrowDown size={14} />
                     </button>
-                  </td>
+                  </td>}
                   <td className="item-name">{e.displayName}</td>
                   <td>
                     <code className="code">{e.code}</code>
@@ -127,7 +135,7 @@ export default function DictionariesTab() {
                     <div className="small">{formatDateTime(e.updatedAt)}</div>
                     {e.updatedBy && <div className="item-sub">{e.updatedBy}</div>}
                   </td>
-                  <td className="actions-cell">
+                  {canEdit && <td className="actions-cell">
                     <button className="icon-btn" title="Edit" aria-label={`Edit ${e.displayName}`} onClick={() => setEditing(e)}>
                       <Pencil size={15} />
                     </button>
@@ -146,7 +154,7 @@ export default function DictionariesTab() {
                         <Trash2 size={15} />
                       </button>
                     )}
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>

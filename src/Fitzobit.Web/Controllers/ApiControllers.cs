@@ -17,7 +17,7 @@ public sealed class DashboardController(DashboardService dashboard) : Controller
 
 [ApiController]
 [Route("api/system")]
-[Authorize(Policy = Policies.Admin)]
+[Authorize(Policy = Policies.Operate)]
 public sealed class SystemController(SystemInfoService systemInfo) : ControllerBase
 {
     [HttpGet]

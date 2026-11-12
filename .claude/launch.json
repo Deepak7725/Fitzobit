@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8765", "--directory", "E:/MOSTRAR_WEBSITE"],
       "port": 8765
+    },
+    {
+      "name": "fitzobit-website",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8766", "--directory", "E:/ClaudeWorkspace/FitzobitWebsite"],
+      "port": 8766
     }
   ]
 }

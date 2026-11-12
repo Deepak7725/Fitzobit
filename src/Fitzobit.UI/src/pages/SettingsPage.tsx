@@ -13,20 +13,20 @@ import AuditTab from './settings/AuditTab';
 
 const TABS = [
   { key: 'general', label: 'General' },
-  { key: 'dropdowns', label: 'Dropdown values', admin: true },
-  { key: 'users', label: 'Users', admin: true },
+  { key: 'dropdowns', label: 'Dropdown values' },
+  { key: 'users', label: 'Users' },
   { key: 'groups', label: 'Delivery Groups' },
   { key: 'whatsapp', label: 'WhatsApp' },
   { key: 'export', label: 'Export Settings' },
-  { key: 'audit', label: 'Audit Log', admin: true },
+  { key: 'audit', label: 'Audit Log' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function SettingsPage() {
-  const { isAdmin } = useAuth();
+  const { isManager } = useAuth();
   const [params, setParams] = useSearchParams();
   const settings = useApi(api.settings);
-  const tabs = TABS.filter((t) => !('admin' in t) || isAdmin);
+  const tabs = TABS;
   const requested = params.get('tab') as TabKey | null;
   const tab: TabKey = tabs.some((t) => t.key === requested) ? requested! : 'general';
 
@@ -35,7 +35,11 @@ export default function SettingsPage() {
     <>
       <PageHeader
         title="Settings"
-        subtitle={isAdmin ? 'Application, drop-down values, users and data.' : 'Application information. Drop-down values and users are managed by an administrator.'}
+        subtitle={
+          isManager
+            ? 'Application, drop-down values, users and data.'
+            : 'Application, drop-down values, users and data. Only a Manager account can change drop-down values, users, the delivery area and renewal reminders.'
+        }
       />
       <div className="tabs tabs-scroll" role="tablist">
         {tabs.map((t) => (
@@ -59,7 +63,7 @@ export default function SettingsPage() {
 }
 
 function GeneralTab({ settings }: { settings: AppSettings }) {
-  const { user, isAdmin } = useAuth();
+  const { user, isManager } = useAuth();
   return (
     <div className="grid-2">
       <div className="stack">
@@ -73,7 +77,7 @@ function GeneralTab({ settings }: { settings: AppSettings }) {
             <dd>{user.userName}</dd>
             <dt>Role</dt>
             <dd>
-              <Badge tone={isAdmin ? 'info' : 'neutral'}>{user.role}</Badge>
+              <Badge tone={isManager ? 'info' : 'neutral'}>{user.role}</Badge>
             </dd>
           </dl>
           <p className="footnote">Change your password from the menu under your name (top right).</p>
@@ -93,11 +97,7 @@ function GeneralTab({ settings }: { settings: AppSettings }) {
           </dl>
         </Card>
       </div>
-      {isAdmin ? <SystemCard /> : (
-        <Card title={<><Database size={18} /> Database</>}>
-          <p className="muted">Database and migration details are visible to administrators.</p>
-        </Card>
-      )}
+      <SystemCard />
     </div>
   );
 }

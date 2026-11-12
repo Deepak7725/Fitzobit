@@ -60,6 +60,15 @@ public sealed class WebTestHost : WebApplicationFactory<Program>
         return client;
     }
 
+    /// <summary>First-run setup, then the Admin adds the first Manager (allowed while none exists); returns the signed-in Manager.</summary>
+    public async Task<ApiClient> SetupManagerAsync()
+    {
+        var admin = await SetupAdminAsync();
+        (await admin.PostAsync("/api/users", new { userName = "boss", displayName = "Fitzobit Manager", role = "Manager", password = ApiClient.ManagerPassword }))
+            .EnsureSuccessStatusCode();
+        return await SignInAsync("boss", ApiClient.ManagerPassword);
+    }
+
     public async Task<ApiClient> SignInAsync(string userName, string password)
     {
         var client = NewClient();
@@ -94,6 +103,7 @@ internal sealed class LoopbackClientStartupFilter : IStartupFilter
 public sealed class ApiClient(HttpClient http)
 {
     public const string AdminPassword = "Setup-Pass-2026";
+    public const string ManagerPassword = "Fresh-Meals-2026";
     public HttpClient Http { get; } = http;
 
     /// <summary>Calls GET /api/auth/state and stores the CSRF token it issues (as the SPA does after sign-in).</summary>

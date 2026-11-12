@@ -8,30 +8,41 @@ import { Badge, Card, EmptyState, ErrorPanel, Loading } from '../../components/u
 import { Modal, useToast } from '../../components/feedback';
 
 const ROLE_HELP: Record<string, string> = {
-  Admin: 'Everything, including users, drop-down values and the audit log.',
-  Manager: 'Customers (add, edit, pause), delivery groups and export.',
+  Admin: 'Customers, delivery groups, export and the audit log. Sees settings but cannot change them; no Money page.',
+  Manager: 'Everything: customers, Money page, users, drop-down values, delivery area, renewal reminders and Pause for everyone.',
 };
 
-/** User administration (Admin only; the API enforces this too). */
+/** User administration: Managers add and edit users, Admins only see the list (the API enforces this too). */
 export default function UsersTab() {
-  const { user: me } = useAuth();
+  const { user: me, isManager: canEdit } = useAuth();
   const users = useApi(api.users);
+  // a new installation has only the first-run Admin: it may add the first Manager
+  const noManager = !!users.data && !users.data.some((u) => u.role === 'Manager' && u.isActive);
+  const canAdd = canEdit || noManager;
   const [editing, setEditing] = useState<AppUser | 'new' | null>(null);
   const [resetting, setResetting] = useState<AppUser | null>(null);
 
   return (
     <Card
       title={<><UserRound size={18} /> Users</>}
-      subtitle="People who can sign in. Passwords are stored only as salted hashes."
+      subtitle={
+        canEdit
+          ? 'People who can sign in. Passwords are stored only as salted hashes.'
+          : noManager
+            ? 'There is no active Manager yet. Add one: only Managers can change users, drop-down values, prices and other settings.'
+            : 'People who can sign in. Only a Manager account can add users, change roles or reset passwords.'
+      }
       actions={
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
-          <Plus size={15} /> Add user
-        </button>
+        canAdd && (
+          <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
+            <Plus size={15} /> Add user
+          </button>
+        )
       }
     >
       {users.error && <ErrorPanel message={users.error} onRetry={users.reload} />}
       {users.loading && !users.data && <Loading label="Loading users…" />}
-      {users.data && users.data.length === 0 && <EmptyState title="No users" message="Add a user to let them sign in." />}
+      {users.data && users.data.length === 0 && <EmptyState title="No users" message={canAdd ? 'Add a user to let them sign in.' : 'A Manager can add users.'} />}
       {users.data && users.data.length > 0 && (
         <div className="table-wrap">
           <table className="table">
@@ -42,7 +53,7 @@ export default function UsersTab() {
                 <th>Status</th>
                 <th>Last sign-in</th>
                 <th>Created</th>
-                <th className="actions-cell" aria-label="Actions" />
+                {canEdit && <th className="actions-cell" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
@@ -56,7 +67,7 @@ export default function UsersTab() {
                     <div className="item-sub">{u.userName}</div>
                   </td>
                   <td>
-                    <Badge tone={u.role === 'Admin' ? 'info' : 'neutral'}>{u.role}</Badge>
+                    <Badge tone={u.role === 'Manager' ? 'info' : 'neutral'}>{u.role}</Badge>
                   </td>
                   <td>
                     {u.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}{' '}
@@ -64,14 +75,16 @@ export default function UsersTab() {
                   </td>
                   <td>{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <span className="muted">Never</span>}</td>
                   <td>{formatDateTime(u.createdAt)}</td>
-                  <td className="actions-cell">
-                    <button className="icon-btn" title="Edit" aria-label={`Edit ${u.userName}`} onClick={() => setEditing(u)}>
-                      <Pencil size={15} />
-                    </button>
-                    <button className="icon-btn" title="Reset password" aria-label={`Reset password for ${u.userName}`} onClick={() => setResetting(u)}>
-                      <KeyRound size={15} />
-                    </button>
-                  </td>
+                  {canEdit && (
+                    <td className="actions-cell">
+                      <button className="icon-btn" title="Edit" aria-label={`Edit ${u.userName}`} onClick={() => setEditing(u)}>
+                        <Pencil size={15} />
+                      </button>
+                      <button className="icon-btn" title="Reset password" aria-label={`Reset password for ${u.userName}`} onClick={() => setResetting(u)}>
+                        <KeyRound size={15} />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -125,7 +125,7 @@ public sealed class AuthService(IFitzobitDbContext db, IPasswordHashing hashing,
     private static string Truncate(string value) => value.Length > 100 ? value[..100] : value;
 }
 
-/// <summary>User administration (Admin only) and self-service password change.</summary>
+/// <summary>User administration (Manager accounts only) and self-service password change.</summary>
 public sealed class UserService(IFitzobitDbContext db, IPasswordHashing hashing, IAuditLogger audit)
 {
     public static AppUser NewUser(string userName, string displayName, UserRole role)
@@ -143,6 +143,10 @@ public sealed class UserService(IFitzobitDbContext db, IPasswordHashing hashing,
         .Select(u => new UserDto(u.Id, u.UserName, u.DisplayName, u.Role.ToString(), u.IsActive, u.LastLoginAt, u.CreatedAt,
             u.LockoutEndsAt > now))
         .ToList();
+
+    /// <summary>True when an active Manager exists. Until then an Admin may add users, so a new installation can create its first Manager.</summary>
+    public Task<bool> HasActiveManagerAsync(CancellationToken ct = default) =>
+        db.Users.AnyAsync(u => u.Role == UserRole.Manager && u.IsActive, ct);
 
     public async Task<UserDto> CreateAsync(string userName, string displayName, UserRole role, string password, CancellationToken ct = default)
     {
@@ -163,9 +167,10 @@ public sealed class UserService(IFitzobitDbContext db, IPasswordHashing hashing,
         var display = NewUser(user.UserName, displayName, role).DisplayName;
         if (id == actingUserId && (!isActive || role != user.Role))
             throw new BusinessRuleException("You cannot deactivate yourself or change your own role.");
-        if (user.Role == UserRole.Admin && user.IsActive && (role != UserRole.Admin || !isActive)
-            && await db.Users.CountAsync(u => u.Role == UserRole.Admin && u.IsActive, ct) <= 1)
-            throw new BusinessRuleException("At least one active administrator is required.");
+        // Only Managers can manage users and settings (owner, 2026-11-12), so the last active Manager must stay.
+        if (user.Role == UserRole.Manager && user.IsActive && (role != UserRole.Manager || !isActive)
+            && await db.Users.CountAsync(u => u.Role == UserRole.Manager && u.IsActive, ct) <= 1)
+            throw new BusinessRuleException("At least one active Manager is required: only Managers can manage users and settings.");
 
         var changes = new ChangeSet();
         changes.Track("DisplayName", user.DisplayName, display);

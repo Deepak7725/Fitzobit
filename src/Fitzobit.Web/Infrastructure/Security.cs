@@ -12,8 +12,11 @@ public static class Policies
     /// <summary>Day-to-day operations: Admin or Manager.</summary>
     public const string Operate = "Operate";
 
-    /// <summary>Users, administrative settings, audit log.</summary>
-    public const string Admin = "Admin";
+    /// <summary>
+    /// Changing settings: users, drop-down values, delivery area, renewal reminders, Pause for everyone.
+    /// Manager accounts only; Admins can view them (owner, 2026-11-12).
+    /// </summary>
+    public const string Manage = "Manage";
 
     /// <summary>The Money page (prices, costs, profit): Manager accounts only, not Admins (owner, 2026-11-10).</summary>
     public const string Money = "Money";

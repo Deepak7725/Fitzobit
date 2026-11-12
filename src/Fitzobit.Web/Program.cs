@@ -81,7 +81,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization(o =>
 {
     o.AddPolicy(Policies.Operate, p => p.RequireRole(Roles.Admin, Roles.Manager));
-    o.AddPolicy(Policies.Admin, p => p.RequireRole(Roles.Admin));
+    o.AddPolicy(Policies.Manage, p => p.RequireRole(Roles.Manager));
     o.AddPolicy(Policies.Money, p => p.RequireRole(Roles.Manager));
     // Everything requires a signed-in user unless explicitly marked [AllowAnonymous].
     o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();

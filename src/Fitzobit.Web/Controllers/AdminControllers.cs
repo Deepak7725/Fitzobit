@@ -32,17 +32,22 @@ public sealed record SettingsDto(
 
 [ApiController]
 [Route("api/users")]
-[Authorize(Policy = Policies.Admin)]
+[Authorize(Policy = Policies.Operate)]
 public sealed class UsersController(UserService users, IClock clock) : ControllerBase
 {
     [HttpGet]
     public Task<IReadOnlyList<UserDto>> List(CancellationToken ct) => users.ListAsync(clock.UtcNow, ct);
 
+    /// <summary>Managers add users. While no active Manager exists, an Admin may add one (first Manager of a new installation).</summary>
     [HttpPost]
-    public Task<UserDto> Create(CreateUserRequest request, CancellationToken ct) =>
-        users.CreateAsync(request.UserName, request.DisplayName, request.Role, request.Password, ct);
+    public async Task<ActionResult<UserDto>> Create(CreateUserRequest request, CancellationToken ct)
+    {
+        if (!User.IsInRole(Roles.Manager) && await users.HasActiveManagerAsync(ct)) return Forbid();
+        return await users.CreateAsync(request.UserName, request.DisplayName, request.Role, request.Password, ct);
+    }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = Policies.Manage)]
     public async Task<IActionResult> Update(int id, UpdateUserRequest request, CancellationToken ct)
     {
         await users.UpdateAsync(id, request.DisplayName, request.Role, request.IsActive, User.UserId()!.Value, ct);
@@ -50,6 +55,7 @@ public sealed class UsersController(UserService users, IClock clock) : Controlle
     }
 
     [HttpPost("{id:int}/reset-password")]
+    [Authorize(Policy = Policies.Manage)]
     public async Task<IActionResult> ResetPassword(int id, ResetPasswordRequest request, CancellationToken ct)
     {
         await users.ResetPasswordAsync(id, request.NewPassword, ct);
@@ -59,7 +65,7 @@ public sealed class UsersController(UserService users, IClock clock) : Controlle
 
 [ApiController]
 [Route("api/audit")]
-[Authorize(Policy = Policies.Admin)]
+[Authorize(Policy = Policies.Operate)]
 public sealed class AuditController(AuditQueryService audit) : ControllerBase
 {
     [HttpGet]
@@ -100,7 +106,7 @@ public sealed class SettingsController(
     public Task<ServiceAreaDto> DeliveryArea([FromServices] ServiceAreaService area, CancellationToken ct) => area.GetAsync(ct);
 
     [HttpPut("delivery-area")]
-    [Authorize(Policy = Policies.Admin)]
+    [Authorize(Policy = Policies.Manage)]
     public Task<ServiceAreaDto> SaveDeliveryArea(SaveServiceAreaRequest request, [FromServices] ServiceAreaService area, CancellationToken ct) =>
         area.SaveAsync(request, ct);
 
@@ -109,7 +115,7 @@ public sealed class SettingsController(
     public Task<RenewalSettingsDto> Renewal([FromServices] RenewalReminderService renewals, CancellationToken ct) => renewals.GetSettingsAsync(ct);
 
     [HttpPut("renewal")]
-    [Authorize(Policy = Policies.Admin)]
+    [Authorize(Policy = Policies.Manage)]
     public Task<RenewalSettingsDto> SaveRenewal(SaveRenewalSettingsRequest request, [FromServices] RenewalReminderService renewals, CancellationToken ct) =>
         renewals.SaveSettingsAsync(request, ct);
 }
@@ -128,16 +134,15 @@ public sealed class DictionariesController(DictionaryService dictionaries) : Con
     public Task<DictionaryOptionsDto> Active(CancellationToken ct) => dictionaries.GetActiveOptionsAsync(ct);
 
     [HttpGet("{type}")]
-    [Authorize(Policy = Policies.Admin)]
     public Task<IReadOnlyList<DictionaryEntryDto>> List(DictionaryType type, CancellationToken ct) => dictionaries.ListAsync(type, ct);
 
     [HttpPost("{type}")]
-    [Authorize(Policy = Policies.Admin)]
+    [Authorize(Policy = Policies.Manage)]
     public Task<DictionaryEntryDto> Create(DictionaryType type, SaveDictionaryEntryRequest request, CancellationToken ct) =>
         dictionaries.CreateAsync(type, request, ct);
 
     [HttpPut("{type}/order")]
-    [Authorize(Policy = Policies.Admin)]
+    [Authorize(Policy = Policies.Manage)]
     public async Task<IActionResult> Reorder(DictionaryType type, ReorderRequest request, CancellationToken ct)
     {
         await dictionaries.ReorderAsync(type, request.Ids ?? [], ct);
@@ -145,11 +150,11 @@ public sealed class DictionariesController(DictionaryService dictionaries) : Con
     }
 
     [HttpPut("entries/{id:int}")]
-    [Authorize(Policy = Policies.Admin)]
+    [Authorize(Policy = Policies.Manage)]
     public Task<DictionaryEntryDto> Update(int id, SaveDictionaryEntryRequest request, CancellationToken ct) => dictionaries.UpdateAsync(id, request, ct);
 
     [HttpDelete("entries/{id:int}")]
-    [Authorize(Policy = Policies.Admin)]
+    [Authorize(Policy = Policies.Manage)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         await dictionaries.DeleteAsync(id, ct);

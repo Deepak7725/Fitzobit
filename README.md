@@ -194,7 +194,7 @@ and `CustomerPauseService` (Application) use it. The browser never calculates da
   packages). If the moved end date reaches an upcoming day *paused for everyone*, that day is paused too and the end date moves
   again. Each pause is recorded per package (`PackagePauses`) with the old and new end date and an optional reason, all in one
   transaction; package row versions and the unique (package, date) index stop a repeated or concurrent request from counting twice.
-- **Pause for everyone** (Admins, Customers page): festive or emergency days pause every running package of Active and Paused
+- **Pause for everyone** (Managers; Admins only see the list; Customers page): festive or emergency days pause every running package of Active and Paused
   customers, any frequency; end dates always move; removable before the day.
 - **Paused count**: own paused days and days paused for everyone, e.g. "4 (2 own + 2 for everyone)" — on the package card,
   in the Customers table column *Paused Days* (sortable; export column `paused`) and on Daily Orders (page, Excel, PDF).
@@ -206,7 +206,7 @@ and `CustomerPauseService` (Application) use it. The browser never calculates da
 
 ## Drop-down values (Settings)
 
-**Settings → Dropdown values** (Admin) manages Preferences, Meal Types, Frequencies and Customer Status
+**Settings → Dropdown values** (Managers change them, Admins only view) manages Preferences, Meal Types, Frequencies and Customer Status
 (`DictionaryEntries`: type, stable code, display name, order, active, delivery days for frequencies). Admins can add,
 rename, reorder, activate and deactivate values. Changes apply immediately to the Add/Edit screens.
 
@@ -217,7 +217,7 @@ rename, reorder, activate and deactivate values. Changes apply immediately to th
 - Changing a frequency's delivery days affects end dates calculated from then on; stored end dates are kept.
 
 API: `GET /api/dictionaries` (active values, all signed-in users), `GET/POST /api/dictionaries/{type}`,
-`PUT /api/dictionaries/{type}/order`, `PUT/DELETE /api/dictionaries/entries/{id}` (Admin).
+`PUT /api/dictionaries/{type}/order`, `PUT/DELETE /api/dictionaries/entries/{id}` (Manager).
 
 ## Customers list, filters and export
 
@@ -287,7 +287,7 @@ who, when, reason) and in the audit log. Groups from the old model were numbered
 
 Latitude/longitude come only from geocoding; they are never typed or guessed.
 
-- **Service city** (Settings → General → Delivery area, Admin): the one city Fitzobit delivers in. Its area is looked up once;
+- **Service city** (Settings → General → Delivery area, Manager): the one city Fitzobit delivers in. Its area is looked up once;
   addresses are searched inside it and matches more than `Geocoding:ServiceAreaMarginKm` (15 km) outside are rejected.
   Nothing is looked up until the city is set.
 - **Provider abstraction:** `IGeocodingService` (Application). Implementations (Infrastructure): `NominatimGeocodingService`
@@ -339,7 +339,9 @@ Everyone signs in. The **server enforces roles on every API call**:
 **First-run setup.** While no user exists the app shows *Create the administrator*. This works only from a browser on
 the server itself (`localhost`, never through a tunnel or proxy), or from anywhere with the setup code configured on the
 server (`Auth:SetupCode`; Render generates one). `Auth:AllowRemoteSetup=true` opens it completely and should only be
-set briefly. The administrator then adds Managers under **Settings → Users**.
+set briefly. The administrator then adds the first Manager under **Settings → Users** (an Admin may add users only while no
+active Manager exists). From then on only **Manager** accounts change users, drop-down values, the delivery area, renewal
+reminders, Pause for everyone and the Money page; Admins see these settings read-only (owner's decision, 2026-11-12).
 
 Passwords: at least 10 characters with letters and numbers, not containing the user name; stored as salted PBKDF2
 hashes. Five failed sign-ins lock an account for 15 minutes. Changing or resetting a password, or changing a
@@ -349,7 +351,7 @@ Cookie-protection keys are stored in the database, so sign-ins survive restarts 
 ## Audit trail
 
 Important actions are recorded with **who, what, when, the record, and old/new values**: sign-ins, users, customers
-created/updated/paused, drop-down value changes, group assignments/moves/removals, groups and exports. Admins browse
+created/updated/paused, drop-down value changes, group assignments/moves/removals, groups and exports. Admins and Managers browse
 them under **Settings → Audit Log**; each customer's panel shows its own trail. Older entries (imports, catalogue) stay readable.
 
 ## WhatsApp architecture

@@ -184,7 +184,7 @@ export default function ViewDataPage() {
   const [hidden, setHidden] = useState<string[]>(() => readStored<string[]>(COLUMNS_KEY, DEFAULT_HIDDEN));
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [openId, setOpenId] = useState<number | null>(null);
-  const { isAdmin } = useAuth();
+  const { isManager } = useAuth();
   const [festiveOpen, setFestiveOpen] = useState(false);
   const [changingGroup, setChangingGroup] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope | null>(null);
@@ -329,11 +329,13 @@ export default function ViewDataPage() {
             <Link to="/customers/new" className="btn btn-secondary">
               <UserPlus size={16} /> Add customer
             </Link>
-            {isAdmin && (
-              <button className="btn btn-secondary" onClick={() => setFestiveOpen(true)} title="Festive or emergency day: pause everyone's delivery">
-                <CalendarOff size={16} /> Pause for everyone
-              </button>
-            )}
+            <button
+              className="btn btn-secondary"
+              onClick={() => setFestiveOpen(true)}
+              title={isManager ? "Festive or emergency day: pause everyone's delivery" : 'Days paused for everyone (only a Manager can change them)'}
+            >
+              <CalendarOff size={16} /> {isManager ? 'Pause for everyone' : 'Paused for everyone'}
+            </button>
             <button className="btn btn-primary" onClick={() => setExportScope(selected.size > 0 ? 'Selected' : 'Filtered')} disabled={!list.data}>
               <Download size={16} /> Export
             </button>
@@ -341,7 +343,7 @@ export default function ViewDataPage() {
         }
       />
 
-      {festiveOpen && <FestivePauseDialog onClose={() => setFestiveOpen(false)} onDone={() => list.reload()} />}
+      {festiveOpen && <FestivePauseDialog readOnly={!isManager} onClose={() => setFestiveOpen(false)} onDone={() => list.reload()} />}
       {options.error && <ErrorPanel message={options.error} onRetry={options.reload} />}
 
       <Card className="data-card">

@@ -1,31 +1,65 @@
 # Fitzobit Delivery Management — Handoff
 
 > **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
-> The app was rebuilt around a **new business model** (Parts 1–9 built 2026-10-08 … 10-31 and **pushed/live**; Part 10 "Pause for
-> everyone", Part 11 "No paused days limit" and Part 12 "Money page" are pushed (`f6ac924`); Part 13 (Money cost lines + history) is **not committed**.
+> The app was rebuilt around a **new business model**. **Parts 1–14 are all pushed and live** (last commit `a872fe0`, 2026-11-10):
+> Parts 1–9 (2026-10-08 … 10-31), 10 Pause for everyone, 11 No paused days limit, 12 Money page, 13 Money cost lines + history,
+> 14 Fill missing prices. **Part 15 (Manager-only settings changes) is done locally, not pushed — see §00.**
 > **Start with §00.** The owner wants to be asked ("don't assume, ask doubts") — use multiple-choice questions, then show the plan.
 > **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
 ---
 
-## 00. STATUS (2026-11-10, late evening)
+## 00. STATUS (2026-11-12) — Part 15 done locally (NOT pushed); then live price/meal entries
 
-Parts 10-13 are pushed and live (`458fdaa`). **"Fill missing prices" is built and NOT committed** (commit message in §0.1).
-**After the owner pushes and Render deploys, Claude runs it on the live site** (the owner asked Claude to fill the prices himself): in the
-owner's Chrome, signed in as `manager_fitzobit`, open https://fitzobit.onrender.com/money and click "Fill missing prices from the price
-list" in the yellow box of the earnings card (or `POST /api/money/prices/fill-missing`). Expected: 32 packages filled, 0 still missing
-(checked 2026-11-10: all 32 unpriced packages are finished - 30 one-day Trail packages, Rs 189 per box set by the owner for every Trail box,
-and 2 Meal bowl weekly at Rs 894). Then confirm the yellow box is gone for This month. Not browser-checked locally (endpoint covered by tests).
+- **Part 15 (2026-11-12, not yet committed): only Manager accounts change settings.** Owner's answers (option questions):
+  - Manager-only **changes**: Dropdown values (add/rename/reorder/activate/delete), Users (add, edit, reset password), Delivery area
+    (service city), Renewal reminder settings, Pause for everyone (preview/add/remove). **Admins only view** them (tabs visible, no buttons;
+    Customers button reads "Paused for everyone" and opens the list read-only). Audit log and System info: **both** roles. Money: Manager only
+    (unchanged).
+  - Code: new policy `Policies.Manage` (role Manager) replaces `Policies.Admin` (removed); GET endpoints of users, audit, system,
+    dictionaries/{type}, festive-pauses are `Operate`. UI uses `isManager` (DictionariesTab, UsersTab, DeliveryAreaCard, RenewalSettingsCard,
+    FestivePauseDialog `readOnly`, ViewDataPage, DeliveryMapPage, SettingsPage shows all tabs + System card to both).
+  - Rules Claude added (told the owner): **while no active Manager exists, an Admin may add users** (first-run setup still creates an Admin, and
+    the owner's local DB has only Admin `deepak` — otherwise nobody could ever create a Manager). `UserService`: "At least one active Manager"
+    replaces the old "at least one active administrator" check.
+  - Tests: `WebSecurityTests.Managers_operate_and_change_settings_while_admins_only_view_them`, deactivation test rewritten for Managers,
+    `CustomerApiTests.Managers_manage_dropdown_values_in_settings`; helper `WebTestHost.SetupManagerAsync`. 233 passing. UI built.
+    Browser check on scratch DB `fitzobit_ui` (dropped): Admin sees Dropdown values/Users/General read-only; Admin adding a 2nd Manager -> 403;
+    Manager edits and adds meal types.
+- **After the owner pushes Part 15, on the live site as `manager_fitzobit`** (owner signs in; Claude enters via the API), from the WhatsApp
+  catalogue read 2026-11-12: add meal types **Protein Salad Bowl** and **Protein Punch Meal Box** (no egg: price only for Veg + None,
+  With Egg blank), rename **Meal bowl -> Standalone Protein Salad**; new price list (monthly/weekly/trail): Regular 3499/899/189,
+  Medium 3999/999/189, Large 4599/1149/189, Standalone Protein Salad 2899/894/189, Protein Salad Bowl 3799/949/189,
+  Protein Punch Meal Box 3799/949/189, Oats 3599/999/189, oats with whey protein 4299/1199/189, Detox 1199/399/189 (Detox weekly Rs 399 set by
+  the owner 2026-11-12, not in the catalogue; Trail prices not in the catalogue either, owner kept them). Sold packages keep their price (owner: only new customers/plans get new prices).
+- Website (E:\ClaudeWorkspace\FitzobitWebsite, separate repo): `config.js` menu updated to the same prices + the 2 new meals (no egg) +
+  "Standalone Protein Salad"; not pushed yet. Owner also wants **meal photos from the Fitzobit WhatsApp chat** on the website (to do).
+- Parts 1-14 pushed and live (`a872fe0`).
+- Live data (2026-11-10): 69 customers; live meal types Regular, Medium, Large, Meal bowl, Oats, Detox Drink, "oats with whey protein";
+  preferences Veg / With Egg / None; frequencies Monthly 26, Weekly 6, Trail 1. Manager account `manager_fitzobit` exists (created by the
+  owner); admin `sivasankari_fitzobit`. Money page price list on live: same price for every preference; Regular 2999/899/189,
+  Medium 3499/999/189, Large 3999/1149/189, Meal bowl 2899/894/189 (= Protein Salad prices), Oats 3499/999/189, Detox Drink 1049/333/189,
+  oats with whey protein 3849/1199/189 (monthly/weekly/trail). Costs: delivery Rs 30, helper Rs 25 per box, no extra cost lines yet;
+  targets Monthly 30 %, Weekly 40 %, Trail 40 %.
+- Claude ran "Fill missing prices" on live (2026-11-10, as `manager_fitzobit` in the owner's Chrome): 32 finished packages filled
+  (30 Trail at Rs 189/box, 2 Meal bowl weekly at Rs 894); Oct-Nov earnings have 0 unpriced boxes.
+- Owner doubted the "oats with whey protein" earnings (Nov: 20 boxes, Rs 2,961): verified correct - one customer, FITZ-000052 Azar, Monthly
+  Rs 3,849 (26 Oct-26 Nov, paused 7 and 9 Nov) = 3849/26 x 20 days. Explained monthly boxes earn less per day than weekly.
+- Told the owner: Detox Drink loses money with these costs (Nov: 68 boxes earned ~Rs 46 each vs Rs 55 delivery + helper = -Rs 1,609 left
+  for food). Possible next request: a lower cost for detox, or per-meal-type costs (today all cost lines apply to every box).
+- How Claude works on the live site: Claude in Chrome (owner's signed-in Chrome, Manager session), `fetch` on same-origin API with header
+  `X-XSRF-TOKEN` from cookie `XSRF-TOKEN`; read-only unless the owner asks for a change. WhatsApp desktop catalogue: keyboard Tab works,
+  mouse clicks do not reach its panel, Enter on a product row ADDS IT TO THE CART (never press it).
 
 ---
 
-## 0. Current state (2026-11-10, after Part 13)
+## 0. Current state (2026-11-11, after Part 14)
 
 | Item | Value |
 |---|---|
 | Project root | `E:\ClaudeWorkspace\Fitzobit` (Windows 11; shells: PowerShell + Git Bash) |
-| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`, in sync with origin up to `f82d3d8` (Daily Orders). Pushed: Parts 1–9 incl. pincode fix, logo, Google Maps link (`0966a70`), renewal reminders (`4f375e8`), same-day pause (`c30072f`), auto-Active on package save (`20cbeba`), no-cache start page (`3560a8a`), GitHub wake-up (`a1cff95`), Daily Orders (`f82d3d8`). Parts 10-12 pushed as `f6ac924`. **Part 13 (Money cost lines, history, day total) is uncommitted** (commit message in §0.1). |
-| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–9 (until 2026-10-26 a tab kept old screens after a deploy; fixed by `Infrastructure/StaticFileCaching.cs`: index.html `no-store`, /assets/* (hashed) 1 year immutable, other files 1 hour). Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
+| Git | GitHub **Deepak7725/Fitzobit** (private), branch `main`, in sync with origin up to `f82d3d8` (Daily Orders). Pushed: Parts 1–9 incl. pincode fix, logo, Google Maps link (`0966a70`), renewal reminders (`4f375e8`), same-day pause (`c30072f`), auto-Active on package save (`20cbeba`), no-cache start page (`3560a8a`), GitHub wake-up (`a1cff95`), Daily Orders (`f82d3d8`). Parts 10-12 pushed as `f6ac924`, Part 13 as `458fdaa`, Part 14 as `a872fe0`. Nothing uncommitted except HANDOFF.md. |
+| **Live site** | **https://fitzobit.onrender.com** — Render free web service `fitzobit` (Docker, Singapore, auto-deploy from `main`, `render.yaml`). Runs Parts 1–14 (until 2026-10-26 a tab kept old screens after a deploy; fixed by `Infrastructure/StaticFileCaching.cs`: index.html `no-store`, /assets/* (hashed) 1 year immutable, other files 1 hour). Service city **Thanjavur** (set by admin `sivasankari_fitzobit`, display name Siva Sankari). The owner cleared the old sample customers and enters real Thanjavur customers (FITZ-000001…). Frequencies there: Monthly 26, Weekly 6, **Trail** 1 (code `TRAIL`, added by the owner). |
 | Live database | **Neon** free PostgreSQL, project `fitzobit` (`shy-surf-54281209`), Singapore, branch `production`, db `neondb`, role `neondb_owner`, direct (non-pooler) connection. On the next deploy the app migrates it automatically (data kept). |
 | Render env vars | `Database__ConnectionString` (Neon, secret), `ForwardedHeaders__TrustAllProxies=true`, `Auth__SetupCode`. `Database__Provider` is unused (harmless, may be deleted). |
 | Database | **PostgreSQL only** (no SQLite anywhere). Local DB `fitzobit` on the local PostgreSQL 18 service (user `postgres`). Connection string: **`src\Fitzobit.Web\appsettings.Local.json`** (git-ignored, Development only); the user secret `Database:ConnectionString` (UserSecretsId `fitzobit-web-local`) also works when saved by the user himself. Local DB `fitzobit` is migrated (all 4 migrations) and holds the owner's **test data**: 20 fake Coimbatore customers FITZ-000001…020 (from `samples/Add-SampleCustomers.ps1` data), all located (service city Coimbatore set), in 5 delivery groups, **25 packages** (random; 000003/007/011/015/019 have two), random delivery times 06:00–08:45, 29 random notes. Login: user **`deepak`** (Admin) — recreated by the owner on 2026-10-16 after he forgot the password (Claude deleted the old `Users` row at his request; nothing references `Users` by FK). Claude does not know the password. |
@@ -35,9 +69,7 @@ and 2 Meal bowl weekly at Rs 894). Then confirm the yellow box is gone for This 
 | Docs | `README.md` (complete, current), `deploy/RENDER.md` (active hosting), `deploy/AZURE.md`, `deploy/TAILSCALE.md` (alternatives). |
 
 ### 0.1 What the user still has to do
-1. **Commit + push "Fill missing prices"**. Suggested message: `Money page: fill missing package prices from the price list` (Manager-only
-   POST api/money/prices/fill-missing and a button in the unpriced warning; gives every package without a price, current and finished, its
-   list price x quantity; packages with a price are never changed). Then Claude runs it on the live site (see §00).
+1. (Done 2026-11-10) Parts 10-14 pushed; missing prices filled on the live site.
 2. **12 pm wake-up = GitHub Actions** `.github/workflows/wake-up.yml` (11:40, 11:55, 12:05 IST) — pushed and tested green by the owner
    (2026-10-27). cron-job.org did NOT work (Render answered its servers with a large page and never started the app); owner told to
    disable that job.
@@ -215,7 +247,7 @@ Decisions asked from the owner (do not change without asking):
   5 days at once (first 3 moved end 18 → 21 Nov, Weekly package still delivered), typed end date (Sunday refused, 25 Nov saved),
   Settings "Can pause" column, no console errors.
 
-### Part 14 (2026-11-10, not yet committed) - Fill missing package prices
+### Part 14 (2026-11-10, pushed and run on live) - Fill missing package prices
 Finished (past) packages cannot be edited, so packages sold before their box had a price (Trail, Meal bowl) could never get one. Owner set
 Trail = Rs 189 for every box and asked to fill them. `MoneyService.FillMissingPricesAsync` (`POST api/money/prices/fill-missing`, Manager
 only): every package with `Price` null, current and past, gets list price x quantity where the list has a price; returns filled / still
@@ -524,7 +556,7 @@ Browser pane gotcha: after a layout change, clicks by coordinate can hit the wro
 ```
 Continue working on the Fitzobit Delivery Management app in E:\ClaudeWorkspace\Fitzobit.
 First read E:\ClaudeWorkspace\Fitzobit\HANDOFF.md completely (section 00 = my next request and the questions
-to ask me, section 0 = current state and open items, section 1 = what Parts 1-13 built, section 3 = how to
+to ask me, section 0 = current state and open items, section 1 = what Parts 1-14 built, section 3 = how to
 build/test/verify).
 Inspect the existing code before changing anything. Do not rebuild working functionality.
 Use PostgreSQL (local appsettings.Local.json / Neon). Do not run git commit or git push - I commit and push myself.

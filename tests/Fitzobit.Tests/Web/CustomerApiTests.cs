@@ -109,10 +109,10 @@ public class CustomerApiTests
     }
 
     [Fact]
-    public async Task Administrators_manage_dropdown_values_in_settings()
+    public async Task Managers_manage_dropdown_values_in_settings()
     {
         using var host = new WebTestHost();
-        var admin = await host.SetupAdminAsync();
+        var admin = await host.SetupManagerAsync();   // only Manager accounts change drop-down values (owner, 2026-11-12)
 
         var created = await JsonAsync(await admin.PostAsync("/api/dictionaries/Frequency", new { displayName = "Fortnightly", numericValue = 12 }));
         Assert.Equal("FORTNIGHTLY", created.GetProperty("code").GetString());

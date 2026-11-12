@@ -18,9 +18,9 @@ function preview(message: string): string {
     .replace(/\{daysLeft\}/gi, SAMPLE.daysLeft);
 }
 
-/** Settings → General → Renewal reminders: days before the end and the WhatsApp message (administrators change them). */
+/** Settings → General → Renewal reminders: days before the end and the WhatsApp message (Manager accounts change them). */
 export default function RenewalSettingsCard() {
-  const { isAdmin } = useAuth();
+  const { isManager } = useAuth();
   const settings = useApi(api.renewalSettings);
   const [editing, setEditing] = useState(false);
   const s = settings.data;
@@ -30,7 +30,7 @@ export default function RenewalSettingsCard() {
       title={<><MessageCircle size={18} /> Renewal reminders</>}
       subtitle="When a package shows as “Renewal due” and the WhatsApp message sent with “Send reminder”."
       actions={
-        isAdmin && s && (
+        isManager && s && (
           <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
             <Pencil size={14} /> Change
           </button>

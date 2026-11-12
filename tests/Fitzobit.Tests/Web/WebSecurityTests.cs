@@ -152,7 +152,7 @@ public class WebSecurityTests
     }
 
     [Fact]
-    public async Task Managers_operate_but_cannot_reach_administration()
+    public async Task Managers_operate_and_change_settings_while_admins_only_view_them()
     {
         using var host = new WebTestHost();
         var admin = await host.SetupAdminAsync();
@@ -173,12 +173,33 @@ public class WebSecurityTests
         Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString((await pdf.Content.ReadAsByteArrayAsync())[..4]));
         HttpAssert.Status(HttpStatusCode.Conflict, await manager.PostAsync("/api/customers/export", new { columns = new[] { "secret" } }));
 
-        foreach (var url in new[] { "/api/users", "/api/audit", "/api/system", "/api/dictionaries/MealType" })
-            HttpAssert.Status(HttpStatusCode.Forbidden, await manager.GetAsync(url));
-        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PostAsync("/api/users",
-            new { userName = "sneaky", displayName = "Sneaky", role = "Admin", password = "Sneaky-Pass-99" }));
-        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PostAsync("/api/dictionaries/MealType", new { displayName = "Sneaky Bowl" }));
-        HttpAssert.Status(HttpStatusCode.Forbidden, await manager.PutAsync("/api/dictionaries/entries/1", new { displayName = "Renamed", isActive = false }));
+        // both roles see users, audit log, system info, drop-down values and the days paused for everyone
+        foreach (var url in new[] { "/api/users", "/api/audit", "/api/system", "/api/dictionaries/MealType", "/api/festive-pauses" })
+        {
+            HttpAssert.Status(HttpStatusCode.OK, await manager.GetAsync(url));
+            HttpAssert.Status(HttpStatusCode.OK, await admin.GetAsync(url));
+        }
+
+        // only Managers change them (owner, 2026-11-12)
+        var bowl = await manager.PostAsync("/api/dictionaries/MealType", new { displayName = "Protein Punch Meal Box" });
+        HttpAssert.Status(HttpStatusCode.OK, bowl);
+        var bowlId = (await bowl.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        HttpAssert.Status(HttpStatusCode.OK, await manager.PutAsync($"/api/dictionaries/entries/{bowlId}", new { displayName = "Protein Punch Box", isActive = true }));
+        HttpAssert.Status(HttpStatusCode.OK, await manager.PostAsync("/api/users",
+            new { userName = "siva", displayName = "Siva Admin", role = "Admin", password = "Thanjavur-Box-26" }));
+
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PostAsync("/api/users",
+            new { userName = "sneaky", displayName = "Sneaky", role = "Manager", password = "Sneaky-Pass-99" }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PostAsync("/api/dictionaries/MealType", new { displayName = "Sneaky Bowl" }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync($"/api/dictionaries/entries/{bowlId}", new { displayName = "Renamed", isActive = false }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync("/api/dictionaries/MealType/order", new { ids = new[] { bowlId } }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.Http.DeleteAsync($"/api/dictionaries/entries/{bowlId}"));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync("/api/settings/delivery-area", new { city = "Thanjavur" }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync("/api/settings/renewal", new { daysBefore = 3, message = "Hi {name}" }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PostAsync("/api/festive-pauses/preview", new { dates = new[] { "2030-01-07" } }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PostAsync("/api/festive-pauses", new { dates = new[] { "2030-01-07" } }));
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.Http.DeleteAsync("/api/festive-pauses/1"));
+        HttpAssert.Status(HttpStatusCode.OK, await manager.PutAsync("/api/settings/renewal", new { daysBefore = 4, message = "Hi {name}, renew?" }));
 
         var me = await manager.RefreshAsync();
         Assert.Equal("Manager", me.GetProperty("user").GetProperty("role").GetString());
@@ -266,10 +287,12 @@ public class WebSecurityTests
         var managerId = users.EnumerateArray().Single(u => u.GetProperty("userName").GetString() == "meena").GetProperty("id").GetInt32();
         var ownerId = users.EnumerateArray().Single(u => u.GetProperty("userName").GetString() == "owner").GetProperty("id").GetInt32();
 
-        HttpAssert.Status(HttpStatusCode.NoContent, await admin.PutAsync($"/api/users/{managerId}", new { displayName = "Meena Manager", role = "Manager", isActive = false }));
-        HttpAssert.Status(HttpStatusCode.Unauthorized, await manager.GetAsync("/api/customers"));
+        // only a Manager changes users: the Admin cannot deactivate anyone
+        HttpAssert.Status(HttpStatusCode.Forbidden, await admin.PutAsync($"/api/users/{managerId}", new { displayName = "Meena Manager", role = "Manager", isActive = false }));
+        HttpAssert.Status(HttpStatusCode.NoContent, await manager.PutAsync($"/api/users/{ownerId}", new { displayName = "Owner", role = "Admin", isActive = false }));
+        HttpAssert.Status(HttpStatusCode.Unauthorized, await admin.GetAsync("/api/customers"));
 
-        var self = await admin.PutAsync($"/api/users/{ownerId}", new { displayName = "Owner", role = "Manager", isActive = true });
+        var self = await manager.PutAsync($"/api/users/{managerId}", new { displayName = "Meena Manager", role = "Admin", isActive = true });
         HttpAssert.Status(HttpStatusCode.Conflict, self);
     }
 

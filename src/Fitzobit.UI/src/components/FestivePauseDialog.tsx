@@ -17,7 +17,8 @@ function addDays(day: string, n: number): string {
  * Pause for everyone (Admins): festive or emergency days. Every package running that day — any frequency — of Active and Paused
  * customers is paused; its end date always moves and the day is counted as "for everyone", not as the customer's own. Upcoming ones can be removed.
  */
-export default function FestivePauseDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+/** Pause for everyone: Managers choose and remove days; Admins (readOnly) only see the list. */
+export default function FestivePauseDialog({ onClose, onDone, readOnly = false }: { onClose: () => void; onDone: () => void; readOnly?: boolean }) {
   const toast = useToast();
   const today = todayIso();
   const list = useApi(api.festivePauses);
@@ -89,20 +90,25 @@ export default function FestivePauseDialog({ onClose, onDone }: { onClose: () =>
 
   return (
     <Modal
-      title="Pause for everyone (festive / emergency)"
+      title={readOnly ? 'Paused for everyone (festive / emergency)' : 'Pause for everyone (festive / emergency)'}
       onClose={() => !busy && onClose()}
-      wide
+      wide={!readOnly}
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose} disabled={busy}>
             Close
           </button>
-          <button className="btn btn-primary" onClick={() => void save()} disabled={busy || selected.length === 0 || checking || !!(current && preview.error)}>
-            {busy ? 'Pausing…' : selected.length <= 1 ? 'Pause this day for everyone' : `Pause ${selected.length} days for everyone`}
-          </button>
+          {!readOnly && (
+            <button className="btn btn-primary" onClick={() => void save()} disabled={busy || selected.length === 0 || checking || !!(current && preview.error)}>
+              {busy ? 'Pausing…' : selected.length <= 1 ? 'Pause this day for everyone' : `Pause ${selected.length} days for everyone`}
+            </button>
+          )}
         </>
       }
     >
+      {readOnly && <p className="muted small">Only a Manager account can pause days for everyone or remove them.</p>}
+      {!readOnly && (
+        <>
       <ul className="confirm-list">
         <li>Every package running on the chosen days is paused — Monthly, Weekly and Trail — for Active and Paused customers.</li>
         <li>Each end date moves one delivery day per paused day, so nobody loses a meal. These days are counted as “for everyone”, not as the customer's own pauses.</li>
@@ -148,6 +154,8 @@ export default function FestivePauseDialog({ onClose, onDone }: { onClose: () =>
           {error}
         </div>
       )}
+        </>
+      )}
 
       <h4 className="list-heading drawer-section">Paused for everyone</h4>
       {list.error && <ErrorPanel message={list.error} onRetry={list.reload} />}
@@ -164,7 +172,7 @@ export default function FestivePauseDialog({ onClose, onDone }: { onClose: () =>
               {f.createdBy ? ` by ${f.createdBy}` : ''}
             </div>
           </div>
-          {f.canRemove && (
+          {f.canRemove && !readOnly && (
             <button className="btn btn-secondary btn-sm" onClick={() => setRemoving(f)} disabled={busy}>
               <Trash2 size={14} /> Remove
             </button>
