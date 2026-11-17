@@ -23,9 +23,9 @@ public static partial class PhoneNumberValidator
 {
     public static PhoneValidationResult Validate(string? raw)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return new(PhoneCheck.Missing, null);
+        var text = Normalization.RemoveInvisible(raw ?? "").Trim(); // hidden marks from a pasted number are ignored
+        if (text.Length == 0) return new(PhoneCheck.Missing, null);
 
-        var text = raw.Trim();
         if (ScientificNotation().IsMatch(text)) return new(PhoneCheck.ScientificNotation, null);
         if (text.Any(char.IsLetter)) return new(PhoneCheck.ContainsLetters, null);
         if (!AllowedCharacters().IsMatch(text)) return new(PhoneCheck.Invalid, null);

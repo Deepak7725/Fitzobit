@@ -25,6 +25,15 @@ public static partial class Normalization
         return digits.Length == 0 ? null : digits;
     }
 
+    /// <summary>
+    /// Removes invisible formatting characters (Unicode category Cf: direction marks such as U+202A/U+202C/U+200E, zero-width
+    /// spaces, BOM). Numbers copied from WhatsApp, Contacts or a call log often carry them around the digits.
+    /// </summary>
+    public static string RemoveInvisible(string text) =>
+        text.Any(c => char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format)
+            ? new string(text.Where(c => char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.Format).ToArray())
+            : text;
+
     /// <summary>Lower-cases, trims and collapses whitespace so "RS Puram ,  Coimbatore" == "rs puram, coimbatore".</summary>
     public static string? NormalizeLocation(string? location)
     {

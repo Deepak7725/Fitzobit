@@ -3,15 +3,15 @@
 > **For the next chat:** read this whole file first, then inspect the code it points to before changing anything.
 > The app was rebuilt around a **new business model**. **Parts 1–14 are all pushed and live** (last commit `a872fe0`, 2026-11-10):
 > Parts 1–9 (2026-10-08 … 10-31), 10 Pause for everyone, 11 No paused days limit, 12 Money page, 13 Money cost lines + history,
-> 14 Fill missing prices. **Part 15 (Manager-only settings changes) is done locally, not pushed — see §00.**
+> 14 Fill missing prices, 15 Manager-only settings changes (`a33b796`, 2026-11-12) — see §00.
 > **Start with §00.** The owner wants to be asked ("don't assume, ask doubts") — use multiple-choice questions, then show the plan.
 > **Do not rebuild working functionality. Never run `git commit` / `git push`** (the user does that; read-only git is fine).
 
 ---
 
-## 00. STATUS (2026-11-12) — Part 15 done locally (NOT pushed); then live price/meal entries
+## 00. STATUS (2026-11-12) — Part 15 pushed and live (`a33b796`); new meals + prices entered on live
 
-- **Part 15 (2026-11-12, not yet committed): only Manager accounts change settings.** Owner's answers (option questions):
+- **Part 15 (2026-11-12, pushed `a33b796`, live): only Manager accounts change settings.** Owner's answers (option questions):
   - Manager-only **changes**: Dropdown values (add/rename/reorder/activate/delete), Users (add, edit, reset password), Delivery area
     (service city), Renewal reminder settings, Pause for everyone (preview/add/remove). **Admins only view** them (tabs visible, no buttons;
     Customers button reads "Paused for everyone" and opens the list read-only). Audit log and System info: **both** roles. Money: Manager only
@@ -26,14 +26,14 @@
     `CustomerApiTests.Managers_manage_dropdown_values_in_settings`; helper `WebTestHost.SetupManagerAsync`. 233 passing. UI built.
     Browser check on scratch DB `fitzobit_ui` (dropped): Admin sees Dropdown values/Users/General read-only; Admin adding a 2nd Manager -> 403;
     Manager edits and adds meal types.
-- **After the owner pushes Part 15, on the live site as `manager_fitzobit`** (owner signs in; Claude enters via the API), from the WhatsApp
-  catalogue read 2026-11-12: add meal types **Protein Salad Bowl** and **Protein Punch Meal Box** (no egg: price only for Veg + None,
-  With Egg blank), rename **Meal bowl -> Standalone Protein Salad**; new price list (monthly/weekly/trail): Regular 3499/899/189,
+- **Done on live 2026-11-12 as `manager_fitzobit`** (owner signed in; Claude entered via the API), from the WhatsApp catalogue read
+  2026-11-12 (new meal type ids 17, 18; Meal bowl = id 7, code MEAL-BOWL kept): add meal types **Protein Salad Bowl** and **Protein Punch Meal Box** (owner: price only for preference None;
+  Veg and With Egg blank = not sold, staff pick None), rename **Meal bowl -> Standalone Protein Salad**; new price list (monthly/weekly/trail): Regular 3499/899/189,
   Medium 3999/999/189, Large 4599/1149/189, Standalone Protein Salad 2899/894/189, Protein Salad Bowl 3799/949/189,
   Protein Punch Meal Box 3799/949/189, Oats 3599/999/189, oats with whey protein 4299/1199/189, Detox 1199/399/189 (Detox weekly Rs 399 set by
   the owner 2026-11-12, not in the catalogue; Trail prices not in the catalogue either, owner kept them). Sold packages keep their price (owner: only new customers/plans get new prices).
 - Website (E:\ClaudeWorkspace\FitzobitWebsite, separate repo): `config.js` menu updated to the same prices + the 2 new meals (no egg) +
-  "Standalone Protein Salad"; not pushed yet. Owner also wants **meal photos from the Fitzobit WhatsApp chat** on the website (to do).
+  "Standalone Protein Salad"; pushed `fc00095`, live on fitzobit.netlify.app. Owner also wants **meal photos from the Fitzobit WhatsApp chat** on the website (to do).
 - Parts 1-14 pushed and live (`a872fe0`).
 - Live data (2026-11-10): 69 customers; live meal types Regular, Medium, Large, Meal bowl, Oats, Detox Drink, "oats with whey protein";
   preferences Veg / With Egg / None; frequencies Monthly 26, Weekly 6, Trail 1. Manager account `manager_fitzobit` exists (created by the

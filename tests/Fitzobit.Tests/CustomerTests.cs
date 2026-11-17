@@ -330,6 +330,27 @@ public class CustomerTests
     }
 
     [Theory]
+    [InlineData("\u202A+91 98765 43210\u202C", PhoneCheck.ValidMobile, "9876543210")] // copied from WhatsApp / Contacts
+    [InlineData("\u200E9876543210\u200F", PhoneCheck.ValidMobile, "9876543210")]
+    [InlineData("98765\u200B43210", PhoneCheck.ValidMobile, "9876543210")]
+    [InlineData("\u202A\u202C", PhoneCheck.Missing, null)]
+    public void Hidden_marks_in_a_pasted_phone_number_are_ignored(string input, PhoneCheck check, string? normalized) =>
+        Assert.Equal(new PhoneValidationResult(check, normalized), PhoneNumberValidator.Validate(input));
+
+    [Fact]
+    public async Task A_pasted_phone_number_with_hidden_marks_is_saved_without_them()
+    {
+        using var test = new TestDatabase();
+        var request = test.NewCustomer("Pasted Number", "\u202A+91 90000 12345\u202C");
+        request.AlternatePhoneNumber = "\u200E9876500000";
+        var created = await CreateAsync(test, request);
+
+        await using var db = test.CreateContext();
+        var saved = await db.Customers.SingleAsync(c => c.Id == created.Id);
+        Assert.Equal(("+91 90000 12345", "9000012345", "9876500000"), (saved.PhoneNumber, saved.NormalizedPhoneNumber, saved.AlternatePhoneNumber));
+    }
+
+    [Theory]
     [InlineData("+91 98765 43210", "9876543210")]
     [InlineData("09876543210", "9876543210")]
     [InlineData("98765-43210", "9876543210")]

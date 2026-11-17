@@ -63,6 +63,9 @@ export function toPackageRequest(p: PackageFormValues): SavePackageRequest {
 export type CustomerErrors = Partial<Record<keyof CustomerFormValues, string>>;
 export type PackageErrors = Partial<Record<keyof PackageFormValues, string>>;
 
+/** Removes invisible marks (direction marks, zero-width spaces) that numbers copied from WhatsApp or Contacts often carry. */
+export const withoutHiddenMarks = (text: string) => text.replace(/\p{Cf}/gu, '');
+
 /** Field checks shown while typing. The server repeats every check (and the business rules) on save. */
 export function validate(v: CustomerFormValues, pincodeRequired: boolean): CustomerErrors {
   const errors: CustomerErrors = {};
@@ -236,11 +239,11 @@ export function CustomerFormFields({ values, onChange, errors, dictionaries, cur
           </Field>
           <Field label="Phone number" error={errors.phoneNumber} hint="10-digit mobile number; +91 or a leading 0 is fine." htmlFor="phoneNumber">
             <input id="phoneNumber" className="input" value={values.phoneNumber} inputMode="tel" maxLength={30} autoComplete="off"
-              onChange={(e) => set('phoneNumber')(e.target.value)} aria-invalid={!!errors.phoneNumber || undefined} />
+              onChange={(e) => set('phoneNumber')(withoutHiddenMarks(e.target.value))} aria-invalid={!!errors.phoneNumber || undefined} />
           </Field>
           <Field label="Alternative phone (optional)" error={errors.alternatePhoneNumber} hint="Another number to reach the customer." htmlFor="alternatePhoneNumber">
             <input id="alternatePhoneNumber" className="input" value={values.alternatePhoneNumber} inputMode="tel" maxLength={30} autoComplete="off"
-              onChange={(e) => set('alternatePhoneNumber')(e.target.value)} aria-invalid={!!errors.alternatePhoneNumber || undefined} />
+              onChange={(e) => set('alternatePhoneNumber')(withoutHiddenMarks(e.target.value))} aria-invalid={!!errors.alternatePhoneNumber || undefined} />
           </Field>
           <Field label={<><Clock size={13} /> Preferred delivery time</>} error={errors.deliveryTime}
             hint="One time for all of the customer’s packages." htmlFor="deliveryTime">

@@ -5,6 +5,7 @@ using Fitzobit.Application.Common;
 using Fitzobit.Application.Dictionaries;
 using Fitzobit.Application.Geocoding;
 using Fitzobit.Domain.Auditing;
+using Fitzobit.Domain.Common;
 using Fitzobit.Domain.Customers;
 using Fitzobit.Domain.Dictionaries;
 using Microsoft.EntityFrameworkCore;
@@ -227,8 +228,9 @@ public sealed partial class CustomerCommandService(
 
         // Minutes are enough for a delivery time; seconds from the client are dropped.
         var time = r.PreferredDeliveryTime!.Value;
-        var alternatePhone = alternate.Check == PhoneCheck.Missing ? null : r.AlternatePhoneNumber!.Trim();
-        return new Validated(name, r.PhoneNumber.Trim(), alternatePhone, address!, location.NormalizedLocation, pincode, mapUrl, location.Locality, location.City,
+        // Saved without the hidden marks a pasted number may carry (the validator ignores them too).
+        var alternatePhone = alternate.Check == PhoneCheck.Missing ? null : Normalization.RemoveInvisible(r.AlternatePhoneNumber!).Trim();
+        return new Validated(name, Normalization.RemoveInvisible(r.PhoneNumber!).Trim(), alternatePhone, address!, location.NormalizedLocation, pincode, mapUrl, location.Locality, location.City,
             new TimeOnly(time.Hour, time.Minute), status);
     }
 
